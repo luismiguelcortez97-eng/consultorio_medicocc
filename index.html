@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -14,119 +15,197 @@
     <div class="login-card">
       <h1>Consultorio Médico CC</h1>
       <p class="subtitle">Sistema de gestión clínica y laboratorio</p>
+
       <form id="login-form">
         <div class="form-group">
           <label for="login-user">Usuario</label>
-          <input type="text" id="login-user" class="form-control" autocomplete="username" required>
+          <input
+            type="text"
+            id="login-user"
+            class="form-control"
+            autocomplete="username"
+            required
+          >
         </div>
+
         <div class="form-group">
           <label for="login-pass">Contraseña</label>
-          <input type="password" id="login-pass" class="form-control" autocomplete="current-password" required>
+          <input
+            type="password"
+            id="login-pass"
+            class="form-control"
+            autocomplete="current-password"
+            required
+          >
         </div>
-        <button type="submit" class="btn btn-primary btn-block">Ingresar</button>
+
+        <button type="submit" class="btn btn-primary btn-block">
+          Ingresar
+        </button>
+
         <p id="login-error" class="login-error"></p>
       </form>
-
     </div>
   </div>
 
   <!-- ========== APP ========== -->
   <div id="app">
+
     <!-- Sidebar -->
     <aside class="sidebar">
+
       <div class="sidebar-header">
         <h2>🏥 Consultorio CC</h2>
         <small>Gestión clínica</small>
       </div>
+
       <nav class="sidebar-nav">
+
         <div class="nav-item active" data-module="dashboard">
           <span class="icon">📊</span> Dashboard
         </div>
+
         <div class="nav-item" data-module="medicos">
           <span class="icon">👨‍⚕️</span> Médicos
         </div>
+
         <div class="nav-item" data-module="pacientes">
           <span class="icon">👤</span> Pacientes
         </div>
+
         <div class="nav-item" data-module="consultas">
           <span class="icon">📋</span> Consultas
         </div>
+
+        <!-- NUEVO MÓDULO: ENFERMERÍA -->
+        <div class="nav-item" data-module="enfermeria">
+          <span class="icon">🩺</span> Enfermería
+        </div>
+
+        <!-- NUEVO MÓDULO: EMPLEADOS -->
+        <div class="nav-item" data-module="empleados">
+          <span class="icon">👥</span> Empleados
+        </div>
+
         <div class="nav-item" data-module="medicamentos">
           <span class="icon">💊</span> Medicamentos
         </div>
+
         <div class="nav-item" data-module="estudios">
           <span class="icon">🧪</span> Estudios Lab
         </div>
+
         <div class="nav-item" data-module="cobros">
           <span class="icon">💵</span> Cobros
         </div>
+
         <div class="nav-item" data-module="balance">
           <span class="icon">📈</span> Balance
         </div>
+
         <div class="nav-item" data-module="respaldos">
           <span class="icon">💾</span> Respaldos
         </div>
+
       </nav>
+
       <div class="sidebar-footer">
-        <button class="btn btn-outline btn-sm" id="btn-logout" style="width:100%; color:#adb5bd; border-color:#495057;">
+        <button
+          class="btn btn-outline btn-sm"
+          id="btn-logout"
+          style="width:100%; color:#adb5bd; border-color:#495057;"
+        >
           Cerrar sesión
         </button>
       </div>
+
     </aside>
 
     <!-- Main -->
     <div class="main-content">
+
       <header class="topbar">
         <div class="d-flex align-center">
           <button class="menu-toggle" id="menu-toggle">☰</button>
           <h1 id="page-title">Dashboard</h1>
         </div>
+
         <div class="topbar-actions">
           <span class="text-muted" style="font-size:0.85rem;">admin</span>
         </div>
       </header>
+
       <div class="content-area" id="content-area">
-        <!-- Dynamic content -->
+        <!-- El contenido de cada módulo se carga desde app.js -->
       </div>
+
     </div>
   </div>
 
   <!-- ========== GENERIC MODAL ========== -->
   <div class="modal-overlay" id="generic-modal">
     <div class="modal">
+
       <div class="modal-header">
         <h3 id="modal-title">Título</h3>
         <button class="modal-close" onclick="closeModal()">&times;</button>
       </div>
+
       <div class="modal-body" id="modal-body">
-        <!-- Dynamic form -->
+        <!-- Formularios dinámicos -->
       </div>
+
       <div class="modal-footer" id="modal-footer">
-        <!-- Buttons -->
+        <!-- Botones dinámicos -->
       </div>
+
     </div>
   </div>
 
   <!-- ========== NIP MODAL ========== -->
   <div class="nip-overlay" id="nip-overlay">
     <div class="nip-box">
+
       <h3 id="nip-title">Acceso restringido</h3>
       <p id="nip-desc">Ingrese el código de acceso</p>
-      <input type="password" id="nip-input" class="form-control nip-input" maxlength="10" placeholder="••••••"
-             onkeydown="if(event.key==='Enter') verifyNip()">
-      <p id="nip-error" style="color:#dc3545; margin-top:0.75rem; display:none; font-size:0.9rem;"></p>
-      <div class="d-flex gap-1" style="margin-top:1.25rem; justify-content:center;">
-        <button class="btn btn-secondary" onclick="closeNipModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="verifyNip()">Verificar</button>
+
+      <input
+        type="password"
+        id="nip-input"
+        class="form-control nip-input"
+        maxlength="10"
+        placeholder="••••••"
+        onkeydown="if(event.key==='Enter') verifyNip()"
+      >
+
+      <p
+        id="nip-error"
+        style="color:#dc3545; margin-top:0.75rem; display:none; font-size:0.9rem;"
+      ></p>
+
+      <div
+        class="d-flex gap-1"
+        style="margin-top:1.25rem; justify-content:center;"
+      >
+        <button class="btn btn-secondary" onclick="closeNipModal()">
+          Cancelar
+        </button>
+
+        <button class="btn btn-primary" onclick="verifyNip()">
+          Verificar
+        </button>
       </div>
+
     </div>
   </div>
 
-  <!-- ========== PRINT AREA (hidden) ========== -->
+  <!-- ========== PRINT AREA (HIDDEN) ========== -->
   <div id="print-area" class="print-area"></div>
 
-  <!-- Scripts -->
+  <!-- Scripts: conservar este orden -->
   <script src="js/db.js"></script>
   <script src="js/app.js"></script>
+
 </body>
 </html>
+```
