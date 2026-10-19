@@ -142,6 +142,7 @@ async function navigateTo(module) {
 
   try {
     switch (module) {
+    
       case 'dashboard': await renderDashboard(); break;
       case 'medicos': await renderMedicos(); break;
       case 'pacientes': await renderPacientes(); break;
@@ -151,6 +152,7 @@ async function navigateTo(module) {
       case 'cobros': await renderCobros(); break;
       case 'balance': await renderBalance(); break;
       case 'respaldos': renderRespaldos(); break;
+      case 'enfermeria': await renderEnfermeria(); break;
       default: area.innerHTML = '<p>Módulo no encontrado</p>';
     }
   } catch (err) {
