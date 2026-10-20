@@ -2323,6 +2323,7 @@ window.openCobroModal = openCobroModal;
 window.saveCobro = saveCobro;
 window.marcarPagado = marcarPagado;
 window.imprimirReceta = imprimirReceta;
+window.imprimirRecetaIndependiente = imprimirRecetaIndependiente;
 window.imprimirBalance = imprimirBalance;
 window.closeModal = closeModal;
 window.verifyNip = verifyNip;
