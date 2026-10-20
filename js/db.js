@@ -283,7 +283,7 @@ async function seedIfEmpty() {
     { nombre: 'Bromuro de otilonio', presentacion: 'Tabletas', concentracion: '40 mg' },
     { nombre: 'Aluminio / magnesio / dimeticona / metoclopramida', presentacion: 'Tabletas', concentracion: 'Combinación' },
     { nombre: 'Itoprida', presentacion: 'Tabletas', concentracion: '50 mg' },
-    { nombre: 'Norfene frina', presentacion: 'Solución oral', concentracion: '10 mg/ml' }
+    { nombre: 'Butilhioscina', presentacion: 'Tabletas', concentracion: '10 mg' }
   ];
 
   const meds = await getAll(STORES.medicamentos);
