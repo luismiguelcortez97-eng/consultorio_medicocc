@@ -1485,14 +1485,9 @@ async function marcarPagado(id) {
   const metodos = { '1': 'Efectivo', '2': 'Tarjeta', '3': 'Transferencia' };
   if (!metodos[metodoPago]) return alert('Selecciona 1, 2 o 3 para registrar un método válido.');
   if (!confirm('¿Confirmar el cobro de $' + (Number(c.monto) || 0).toFixed(2) + ' por ' + metodos[metodoPago] + '?')) return;
-  c.status = 'pagado';
-  c.metodoPago = metodos[metodoPago];
-  c.cobradoPor = APP.currentUser || 'Recepción';
-  c.cobradoAt = new Date().toISOString();
-  c.audit = c.audit || [];
-  c.audit.push({ fecha: c.cobradoAt, accion: 'marcado_pagado', metodoPago: c.metodoPago, usuario: c.cobradoPor });
   try {
-    await DB.put(DB.STORES.cobros, c);
+    await DB.confirmarCobro(id, metodos[metodoPago]);
+    alert('Cobro confirmado correctamente.');
     await renderCobros();
   } catch (error) {
     alert('No se pudo confirmar el cobro: ' + error.message);
