@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - feature/chat-agenda-recetas
+      - fix/empleados-password-admin
   pull_request:
     branches:
       - main

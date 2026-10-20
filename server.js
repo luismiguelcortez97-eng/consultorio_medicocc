@@ -80,6 +80,10 @@ async function initDb() {
     )
   `);
 
+  // Migración compatible con cuentas ya existentes: ahora también admite administradores del personal.
+  await pool.query('ALTER TABLE staff_users DROP CONSTRAINT IF EXISTS staff_users_role_check');
+  await pool.query("ALTER TABLE staff_users ADD CONSTRAINT staff_users_role_check CHECK (role IN ('admin', 'medico', 'enfermeria', 'empleado'))");
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS app_records (
       store TEXT NOT NULL,
@@ -376,7 +380,7 @@ app.post('/api/staff-users', requireAuth, requireAdmin, async (req, res, next) =
     const cleanUsername = typeof username === 'string' ? username.trim() : '';
     const cleanName = typeof displayName === 'string' ? displayName.trim() : '';
     if (!/^[a-zA-Z0-9._-]{3,40}$/.test(cleanUsername) || cleanName.length < 2 ||
-        !['medico', 'enfermeria', 'empleado'].includes(role) ||
+        !['admin', 'medico', 'enfermeria', 'empleado'].includes(role) ||
         typeof password !== 'string' || password.length < 10) {
       return res.status(400).json({
         error: 'Revisa los datos. Usuario: 3-40 caracteres; contraseña: mínimo 10; elige un rol válido.'
@@ -399,14 +403,62 @@ app.post('/api/staff-users', requireAuth, requireAdmin, async (req, res, next) =
 app.patch('/api/staff-users/:id', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-    if (!Number.isSafeInteger(id) || id < 1 || typeof req.body?.active !== 'boolean') {
-      return res.status(400).json({ error: 'Solicitud inválida.' });
+    const body = req.body || {};
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Usuario inválido.' });
     }
+
+    const changes = [];
+    const values = [];
+    const add = (column, value) => {
+      values.push(value);
+      changes.push(column + '=$' + values.length);
+    };
+
+    if (Object.prototype.hasOwnProperty.call(body, 'active')) {
+      if (typeof body.active !== 'boolean') {
+        return res.status(400).json({ error: 'El estado debe ser válido.' });
+      }
+      add('active', body.active);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'role')) {
+      if (!['admin', 'medico', 'enfermeria', 'empleado'].includes(body.role)) {
+        return res.status(400).json({ error: 'Selecciona un rol válido.' });
+      }
+      if (String(req.user?.username || req.auth?.username || '') === '') {
+        // La sesión autenticada sigue siendo la autoridad para permisos; no se confía en datos enviados por el navegador.
+      }
+      add('role', body.role);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'password')) {
+      if (typeof body.password !== 'string' || body.password.length < 10 || body.password.length > 200) {
+        return res.status(400).json({ error: 'La nueva contraseña debe tener entre 10 y 200 caracteres.' });
+      }
+      const credentials = hashStaffPassword(body.password);
+      add('password_hash', credentials.hash);
+      add('password_salt', credentials.salt);
+    }
+
+    if (!changes.length) {
+      return res.status(400).json({ error: 'No hay cambios que guardar.' });
+    }
+
+    const current = await pool.query('SELECT username FROM staff_users WHERE id=$1', [id]);
+    if (!current.rowCount) return res.status(404).json({ error: 'Usuario no encontrado.' });
+    const session = getSession(req);
+    if (session && current.rows[0].username === session.username &&
+        ((body.active === false) || (body.role && body.role !== 'admin'))) {
+      return res.status(400).json({ error: 'No puedes desactivar ni quitarte el rol de administrador desde tu propia sesión.' });
+    }
+
+    values.push(id);
     const result = await pool.query(
-      'UPDATE staff_users SET active=$1 WHERE id=$2 RETURNING id, username, display_name AS "displayName", role, active',
-      [req.body.active, id]
+      'UPDATE staff_users SET ' + changes.join(', ') + ' WHERE id=$' + values.length +
+      ' RETURNING id, username, display_name AS "displayName", role, active',
+      values
     );
-    if (!result.rowCount) return res.status(404).json({ error: 'Usuario no encontrado.' });
     res.json(result.rows[0]);
   } catch (error) {
     next(error);

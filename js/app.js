@@ -153,6 +153,7 @@ async function navigateTo(module) {
     chat: 'Chat interno del personal',
     recetas: 'Receta independiente',
     personal: 'Accesos del personal',
+    empleados: 'Empleados',
     medicamentos: 'Medicamentos',
     estudios: 'Estudios de Laboratorio',
     cobros: 'Cobros y Ventas del Día',
@@ -176,6 +177,7 @@ async function navigateTo(module) {
       case 'chat': await renderChat(); break;
       case 'recetas': await renderRecetas(); break;
       case 'personal': await renderPersonal(); break;
+      case 'empleados': await renderEmpleados(); break;
       case 'medicamentos': await renderMedicamentos(); break;
       case 'estudios': await renderEstudios(); break;
       case 'cobros': await renderCobros(); break;
@@ -2485,25 +2487,113 @@ async function imprimirRecetaIndependiente(id) {
   window.print();
 }
 
+// ========== EMPLEADOS ==========
+async function renderEmpleados() {
+  const empleados = await DB.getAll(DB.STORES.empleados);
+  const area = document.getElementById('content-area');
+  area.innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <div><h3>Directorio de empleados</h3><p class="text-muted">Administra los datos del personal de recepción, administración y apoyo.</p></div>
+        <button class="btn btn-primary btn-sm" onclick="openEmpleadoModal()">+ Nuevo empleado</button>
+      </div>
+      <div class="card-body">
+        ${empleados.length ? `<div class="table-responsive"><table>
+          <thead><tr><th>Nombre</th><th>Puesto</th><th>Teléfono</th><th>Correo</th><th>Estado</th><th>Acciones</th></tr></thead>
+          <tbody>${empleados.map(function(e) {
+            return `<tr>
+              <td><strong>${featureEscape(e.nombre || '')}</strong></td>
+              <td>${featureEscape(e.puesto || '—')}</td>
+              <td>${featureEscape(e.telefono || '—')}</td>
+              <td>${featureEscape(e.correo || '—')}</td>
+              <td>${e.activo === false ? '<span class="badge badge-secondary">Inactivo</span>' : '<span class="badge badge-success">Activo</span>'}</td>
+              <td><button class="btn btn-outline btn-sm" onclick="openEmpleadoModal(${Number(e.id)})">Editar</button>
+              <button class="btn btn-danger btn-sm" onclick="eliminarEmpleado(${Number(e.id)})">Eliminar</button></td>
+            </tr>`;
+          }).join('')}</tbody></table></div>` : '<div class="empty-state"><div class="icon">👥</div><p>No hay empleados registrados todavía.</p><p>Selecciona “Nuevo empleado” para agregar el primero.</p></div>'}
+      </div>
+    </div>`;
+}
+
+async function openEmpleadoModal(id = null) {
+  APP.editingId = id;
+  const modal = document.getElementById('generic-modal');
+  document.getElementById('modal-title').textContent = id ? 'Editar empleado' : 'Nuevo empleado';
+  let e = { nombre: '', puesto: '', telefono: '', correo: '', notas: '', activo: true };
+  if (id) e = await DB.get(DB.STORES.empleados, id) || e;
+  document.getElementById('modal-body').innerHTML = `
+    <div class="form-row">
+      <div class="form-group"><label>Nombre completo *</label><input class="form-control" id="emp-nombre" maxlength="120" value="${escapeAttr(e.nombre || '')}" required></div>
+      <div class="form-group"><label>Puesto</label><input class="form-control" id="emp-puesto" maxlength="100" value="${escapeAttr(e.puesto || '')}" placeholder="Recepción, asistente, limpieza…"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Teléfono</label><input class="form-control" id="emp-telefono" maxlength="40" value="${escapeAttr(e.telefono || '')}"></div>
+      <div class="form-group"><label>Correo electrónico</label><input class="form-control" id="emp-correo" type="email" maxlength="150" value="${escapeAttr(e.correo || '')}"></div>
+    </div>
+    <div class="form-group"><label>Notas</label><textarea class="form-control" id="emp-notas" rows="3" maxlength="1000">${featureEscape(e.notas || '')}</textarea></div>
+    <div class="form-group"><label><input type="checkbox" id="emp-activo" ${e.activo === false ? '' : 'checked'}> Empleado activo</label></div>`;
+  document.getElementById('modal-footer').innerHTML = '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="guardarEmpleado()">Guardar empleado</button>';
+  modal.classList.add('show');
+}
+
+async function guardarEmpleado() {
+  const nombre = document.getElementById('emp-nombre').value.trim();
+  if (!nombre) return alert('El nombre del empleado es obligatorio.');
+  const data = {
+    nombre,
+    puesto: document.getElementById('emp-puesto').value.trim(),
+    telefono: document.getElementById('emp-telefono').value.trim(),
+    correo: document.getElementById('emp-correo').value.trim(),
+    notas: document.getElementById('emp-notas').value.trim(),
+    activo: document.getElementById('emp-activo').checked
+  };
+  try {
+    if (APP.editingId) {
+      data.id = APP.editingId;
+      await DB.put(DB.STORES.empleados, data);
+    } else {
+      await DB.add(DB.STORES.empleados, data);
+    }
+    closeModal();
+    await renderEmpleados();
+  } catch (error) {
+    alert('No se pudo guardar el empleado: ' + error.message);
+  }
+}
+
+async function eliminarEmpleado(id) {
+  if (!confirm('¿Eliminar este registro de empleado? Esta acción no elimina las cuentas de acceso del módulo “Accesos del personal”.')) return;
+  try {
+    await DB.remove(DB.STORES.empleados, id);
+    await renderEmpleados();
+  } catch (error) {
+    alert('No se pudo eliminar el registro: ' + error.message);
+  }
+}
+
 // ========== CUENTAS DEL PERSONAL ==========
 async function renderPersonal() {
-  if (APP.currentRole !== 'admin') return alert('Solo el administrador puede gestionar accesos.');
+  if (APP.currentRole !== 'admin') return alert('Solo un administrador puede gestionar accesos.');
   const area = document.getElementById('content-area');
   const users = await DB.getAll('personal');
-  area.innerHTML = '<div class="card"><div class="card-header"><div><h3>Cuentas del personal</h3><p class="text-muted">Crea un acceso individual para cada médico, enfermería o empleado.</p></div></div>' +
-    '<div class="card-body"><form id="staff-form"><div class="form-row"><div class="form-group"><label>Nombre para mostrar *</label><input class="form-control" id="staff-name" required></div>' +
+  const roleLabels = { admin: 'Administrador', medico: 'Médico', enfermeria: 'Enfermería', empleado: 'Personal / recepción' };
+
+  area.innerHTML = '<div class="card"><div class="card-header"><div><h3>Cuentas del personal</h3><p class="text-muted">Crea accesos individuales y asigna permisos.</p></div></div>' +
+    '<div class="card-body"><form id="staff-form"><div class="form-row"><div class="form-group"><label>Nombre para mostrar *</label><input class="form-control" id="staff-name" required maxlength="100"></div>' +
     '<div class="form-group"><label>Usuario de acceso *</label><input class="form-control" id="staff-username" minlength="3" maxlength="40" pattern="[A-Za-z0-9._-]+" required></div></div>' +
-    '<div class="form-row"><div class="form-group"><label>Rol *</label><select class="form-control" id="staff-role"><option value="medico">Médico</option><option value="enfermeria">Enfermería</option><option value="empleado">Personal / recepción</option></select></div>' +
-    '<div class="form-group"><label>Contraseña inicial (mínimo 10 caracteres) *</label><input class="form-control" id="staff-password" type="password" minlength="10" autocomplete="new-password" required></div></div>' +
-    '<button class="btn btn-primary" type="submit">Crear cuenta</button><p class="text-muted staff-help">Entrega la contraseña de forma privada y usa una contraseña única por persona.</p></form></div></div>' +
+    '<div class="form-row"><div class="form-group"><label>Rol y permisos *</label><select class="form-control" id="staff-role"><option value="medico">Médico</option><option value="enfermeria">Enfermería</option><option value="empleado">Personal / recepción</option><option value="admin">Administrador</option></select></div>' +
+    '<div class="form-group"><label>Contraseña inicial (mínimo 10 caracteres) *</label><input class="form-control" id="staff-password" type="password" minlength="10" maxlength="200" autocomplete="new-password" required></div></div>' +
+    '<button class="btn btn-primary" type="submit">Crear cuenta</button><p class="text-muted staff-help">Asigna el rol de administrador solo a personas autorizadas. Las contraseñas no se muestran; solo pueden restablecerse.</p></form></div></div>' +
     '<div class="card"><div class="card-header"><h3>Usuarios registrados</h3></div><div class="card-body">' +
-    (users.length ? '<div class="table-responsive"><table><thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Estado</th><th>Acción</th></tr></thead><tbody>' +
+    (users.length ? '<div class="table-responsive"><table><thead><tr><th>Nombre</th><th>Usuario</th><th>Rol / permisos</th><th>Estado</th><th>Administrar</th></tr></thead><tbody>' +
       users.map(function (u) {
-        const roles = { medico: 'Médico', enfermeria: 'Enfermería', empleado: 'Personal' };
-        return '<tr><td>' + featureEscape(u.displayName) + '</td><td>' + featureEscape(u.username) + '</td><td>' + featureEscape(roles[u.role] || u.role) +
-          '</td><td>' + (u.active ? 'Activo' : 'Desactivado') + '</td><td><button class="btn ' + (u.active ? 'btn-danger' : 'btn-success') +
-          ' btn-sm" onclick="cambiarEstadoPersonal(' + Number(u.id) + ',' + (!u.active) + ')">' + (u.active ? 'Desactivar' : 'Activar') + '</button></td></tr>';
-      }).join('') + '</tbody></table></div>' : '<div class="empty-state"><p>Aún no hay cuentas adicionales. La cuenta administradora se configura en Render.</p></div>') +
+        return '<tr><td>' + featureEscape(u.displayName) + '</td><td>' + featureEscape(u.username) + '</td><td><select class="form-control" id="staff-role-' + Number(u.id) + '">' +
+          ['empleado','medico','enfermeria','admin'].map(function (r) { return '<option value="' + r + '"' + (u.role === r ? ' selected' : '') + '>' + roleLabels[r] + '</option>'; }).join('') +
+          '</select><button class="btn btn-outline btn-sm" style="margin-top:5px" onclick="actualizarRolPersonal(' + Number(u.id) + ')">Guardar rol</button></td>' +
+          '<td>' + (u.active ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-secondary">Desactivado</span>') + '</td><td class="staff-actions">' +
+          '<button class="btn btn-outline btn-sm" onclick="cambiarPasswordPersonal(' + Number(u.id) + ',\'' + featureEscape(u.username).replace(/'/g, '&#39;') + '\')">Cambiar contraseña</button> ' +
+          '<button class="btn ' + (u.active ? 'btn-danger' : 'btn-success') + ' btn-sm" onclick="cambiarEstadoPersonal(' + Number(u.id) + ',' + (!u.active) + ')">' + (u.active ? 'Desactivar' : 'Activar') + '</button></td></tr>';
+      }).join('') + '</tbody></table></div>' : '<div class="empty-state"><p>Aún no hay cuentas adicionales. La cuenta principal se configura en Render.</p></div>') +
     '</div></div>';
   document.getElementById('staff-form').addEventListener('submit', crearCuentaPersonal);
 }
@@ -2518,9 +2608,33 @@ async function crearCuentaPersonal(event) {
   };
   try {
     await DB.addStaffUser(data);
-    alert('Cuenta creada. El usuario ya puede iniciar sesión.');
+    alert('Cuenta creada correctamente.');
     await renderPersonal();
   } catch (error) { alert('No se pudo crear la cuenta: ' + error.message); }
+}
+
+async function actualizarRolPersonal(id) {
+  const role = document.getElementById('staff-role-' + id).value;
+  const labels = { admin: 'Administrador', medico: 'Médico', enfermeria: 'Enfermería', empleado: 'Personal / recepción' };
+  if (!confirm('¿Cambiar los permisos de esta cuenta a "' + labels[role] + '"?')) return;
+  try {
+    await DB.updateStaffUser(id, { role });
+    alert('Permisos actualizados. El usuario debe iniciar sesión de nuevo para que se apliquen.');
+    await renderPersonal();
+  } catch (error) { alert('No se pudo actualizar el rol: ' + error.message); }
+}
+
+async function cambiarPasswordPersonal(id, username) {
+  const password = prompt('Escribe la nueva contraseña para ' + username + '. Debe tener al menos 10 caracteres:');
+  if (password === null) return;
+  if (password.length < 10 || password.length > 200) {
+    alert('La contraseña debe tener entre 10 y 200 caracteres.');
+    return;
+  }
+  try {
+    await DB.updateStaffUser(id, { password });
+    alert('Contraseña actualizada. Comunícala directamente a la persona y no por el chat grupal.');
+  } catch (error) { alert('No se pudo cambiar la contraseña: ' + error.message); }
 }
 
 async function cambiarEstadoPersonal(id, active) {
