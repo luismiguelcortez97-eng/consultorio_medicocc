@@ -18,13 +18,31 @@ const APP = {
 
 // ========== INIT ==========
 document.addEventListener('DOMContentLoaded', async () => {
+  // Conectar el formulario de inmediato, antes de llamadas a la API.
+  // Así un error de inicialización no deja el login sin manejador y evita
+  // que el navegador haga un refresh tradicional al pulsar Ingresar.
+  try {
+    setupEventListeners();
+  } catch (err) {
+    console.error('Error al configurar la interfaz:', err);
+    const errorEl = document.getElementById('login-error');
+    if (errorEl) {
+      errorEl.textContent = 'No se pudo preparar el inicio de sesión. Recarga la página.';
+      errorEl.style.display = 'block';
+    }
+  }
+
   try {
     await DB.openDB();
-    setupEventListeners();
     await checkSession();
   } catch (err) {
     console.error('Error al iniciar:', err);
-    alert('No se pudo conectar con el servicio web. Verifique la conexión o contacte al administrador.');
+    showLogin();
+    const errorEl = document.getElementById('login-error');
+    if (errorEl) {
+      errorEl.textContent = 'No se pudo conectar con el servicio. Intenta iniciar sesión nuevamente.';
+      errorEl.style.display = 'block';
+    }
   }
 });
 
