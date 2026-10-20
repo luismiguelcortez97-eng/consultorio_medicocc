@@ -2124,6 +2124,8 @@ async function imprimirReceta(consultaId) {
   if (!c) return;
   const p = await DB.get(DB.STORES.pacientes, c.pacienteId);
   const m = await DB.get(DB.STORES.medicos, c.medicoId);
+  const fechaNacPaciente = obtenerFechaNacimientoPaciente(p);
+  const edadPaciente = calcularEdad(fechaNacPaciente);
   const allMeds = await DB.getAll(DB.STORES.medicamentos);
   const allEsts = await DB.getAll(DB.STORES.estudios);
 
