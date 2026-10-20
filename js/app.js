@@ -243,8 +243,9 @@ async function renderDashboard() {
   const medicos = await DB.getAll(DB.STORES.medicos);
   const pacientes = await DB.getAll(DB.STORES.pacientes);
   const consultas = (await DB.getAll(DB.STORES.consultas)).filter(c => !c.eliminada);
-  const hoy = new Date().toISOString().slice(0, 10);
-  const resumenCobros = APP.currentRole === 'admin' ? await DB.getCobrosHoy(hoy) : { total: 0 };
+  const hoy = localDateString(new Date());
+  const offsetMinutos = new Date().getTimezoneOffset();
+  const resumenCobros = APP.currentRole === 'admin' ? await DB.getCobrosHoy(hoy, offsetMinutos) : { total: 0 };
   const totalHoy = Number(resumenCobros.total) || 0;
 
   const area = document.getElementById('content-area');
@@ -611,7 +612,7 @@ async function deletePaciente(id) {
 
 // ========== CONSULTAS ==========
 async function renderConsultas() {
-  const consultas = await DB.getAll(DB.STORES.consultas);
+  const consultas = (await DB.getAll(DB.STORES.consultas)).filter(c => !c.eliminada);
   const area = document.getElementById('content-area');
 
   area.innerHTML = `
