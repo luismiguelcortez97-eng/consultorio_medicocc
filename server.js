@@ -762,10 +762,11 @@ app.get(
 app.get(
   '/api/data/:store/:id',
   requireAuth,
-  (req, res, next) =>
-    req.params.store === 'cobros'
-      ? requireFinanceRead(req, res, next)
-      : next(),
+  (req, res, next) => {
+    if (req.params.store === 'cobros') return requireFinanceRead(req, res, next);
+    if (req.params.store === 'empleados') return requireAdmin(req, res, next);
+    return next();
+  },
   async (req, res, next) => {
     try {
       const { store, id } = req.params;
