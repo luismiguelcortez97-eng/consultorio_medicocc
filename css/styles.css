@@ -680,6 +680,28 @@ body.tema-suave {
 @media (max-width: 768px) {
   .consultas-filtros { grid-template-columns: 1fr; gap: .5rem; }
 }
+/* Buscador de pacientes */
+.pacientes-buscador {
+  display: flex;
+  flex-direction: column;
+  gap: .45rem;
+  margin-bottom: 1rem;
+  max-width: 680px;
+}
+.pacientes-buscador .form-control {
+  min-height: 42px;
+}
+#pacientes-busqueda-resumen {
+  margin: 0 0 .85rem;
+}
+#pacientes-tabla-cuerpo tr[hidden],
+#pacientes-sin-resultados[hidden] {
+  display: none;
+}
+.tema-suave .pacientes-buscador small {
+  color: #b8c0ca;
+}
+
 /* ========== RESPONSIVE ========== */
 @media (max-width: 768px) {
   .sidebar {
