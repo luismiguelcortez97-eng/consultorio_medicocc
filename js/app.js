@@ -12,7 +12,8 @@ const APP = {
   editingId: null,
   tempConsulta: null, // for building consultation
   unlockedCobros: false,
-  unlockedBalance: false
+  unlockedBalance: false,
+  personalAccessGranted: false
 };
 
 // ========== INIT ==========
@@ -2150,33 +2151,31 @@ async function renderEnfermeria() {
           <div class="form-grid">
             <div class="form-group">
               <label>Paciente registrado</label>
-              <select class="form-control" name="pacienteId" required>
-                <option value="">— Seleccione al paciente —</option>
-                ${pacientes.map(p => `<option value="${p.id}">${escapeHtml(p.nombre)}</option>`).join('')}
-              </select>
+              <input class="form-control" name="pacienteNombre" list="enf-pacientes-list" autocomplete="off" placeholder="Escriba para buscar paciente">
+              <datalist id="enf-pacientes-list">${pacientes.map(p => `<option value="${escapeHtml(p.nombre)}"></option>`).join('')}</datalist>
             </div>
 
             <div class="form-group">
               <label>Responsable de enfermería</label>
-              <input class="form-control" name="responsable" required>
+              <input class="form-control" name="responsable">
             </div>
 
             <div class="form-group">
               <label>Presión arterial</label>
               <input class="form-control" name="presion"
-                     placeholder="120/80" required>
+                     placeholder="120/80" inputmode="numeric">
             </div>
 
             <div class="form-group">
               <label>Frecuencia cardíaca (lpm)</label>
               <input class="form-control" name="fc"
-                     type="number" min="1" required>
+                     type="number" min="1">
             </div>
 
             <div class="form-group">
               <label>Frecuencia respiratoria (rpm)</label>
               <input class="form-control" name="fr"
-                     type="number" min="1" required>
+                     type="number" min="1">
             </div>
 
             <div class="form-group">
@@ -2190,20 +2189,18 @@ async function renderEnfermeria() {
               <label>Peso (kg)</label>
               <input class="form-control" name="peso"
                      type="number" min="0.1" max="500"
-                     step="0.1" required>
+                     step="0.1">
             </div>
 
             <div class="form-group">
-              <label>Talla (cm)</label>
-              <input class="form-control" name="talla"
-                     type="number" min="20" max="250"
-                     step="0.1" required>
+              <label>Altura (m)</label>
+              <input class="form-control" name="talla" type="number" min="0.2" max="2.5" step="0.01" placeholder="1.75">
             </div>
 
             <div class="form-group">
               <label>Saturación de oxígeno (%)</label>
               <input class="form-control" name="spo2"
-                     type="number" min="1" max="100" required>
+                     type="number" min="1" max="100">
             </div>
 
             <div class="form-group">
@@ -2252,11 +2249,11 @@ async function renderEnfermeria() {
                   <td>${escEnf(r.presion || '')}</td>
                   <td>${escEnf(r.fc ?? '')}</td>
                   <td>${escEnf(r.fr ?? '')}</td>
-                  <td>${escEnf(r.temperatura ?? '')} °C</td>
-                  <td>${escEnf(r.peso ?? '')} kg</td>
-                  <td>${escEnf(r.talla ?? '')} cm</td>
+                  <td>${escEnf(r.temperatura ?? '')}${r.temperatura != null && r.temperatura !== '' ? ' °C' : ''}</td>
+                  <td>${escEnf(r.peso ?? '')}${r.peso != null && r.peso !== '' ? ' kg' : ''}</td>
+                  <td>${escEnf(r.talla == null || r.talla === '' ? '' : (Number(r.talla) > 3 ? (Number(r.talla) / 100).toFixed(2) : Number(r.talla).toFixed(2)))} m</td>
                   <td>${escEnf(r.imc ?? '')}</td>
-                  <td>${escEnf(r.spo2 ?? '')}%</td>
+                  <td>${escEnf(r.spo2 ?? '')}${r.spo2 != null && r.spo2 !== '' ? '%' : ''}</td>
                   <td>${escEnf(r.observaciones || '')}</td>
                 </tr>
               `).join('') || `
@@ -2273,10 +2270,12 @@ async function renderEnfermeria() {
     const form = document.getElementById('form-enfermeria');
     const peso = form.elements.peso;
     const talla = form.elements.talla;
+    const presion = form.elements.presion;
+    presion.addEventListener('input', function () { const digits = presion.value.replace(/[^0-9]/g, '').slice(0, 6); presion.value = digits.length > 3 ? digits.slice(0, 3) + '/' + digits.slice(3) : digits; });
 
     function actualizarIMC() {
       const p = Number(peso.value);
-      const t = Number(talla.value) / 100;
+      const t = Number(talla.value) > 3 ? Number(talla.value) / 100 : Number(talla.value);
       const imc = p > 0 && t > 0
         ? (p / (t * t)).toFixed(2)
         : '';
@@ -2308,27 +2307,26 @@ async function guardarEnfermeria(event) {
   const form = event.currentTarget;
   const datos = new FormData(form);
 
-  const peso = Number(datos.get('peso'));
-  const talla = Number(datos.get('talla'));
-  const tallaM = talla / 100;
-
-  if (!(peso > 0 && tallaM > 0)) {
-    alert('Verifica el peso y la talla.');
-    return;
-  }
-
+  const pesoTexto = String(datos.get('peso') || '').trim();
+  const tallaTexto = String(datos.get('talla') || '').trim();
+  const peso = pesoTexto ? Number(pesoTexto) : null;
+  const tallaValor = tallaTexto ? Number(tallaTexto) : null;
+  const tallaM = tallaValor != null && tallaValor > 0 ? (tallaValor > 3 ? tallaValor / 100 : tallaValor) : null;
+  if (pesoTexto && !(peso > 0)) return alert('Verifica el peso.');
+  if (tallaTexto && !(tallaM > 0 && tallaM <= 2.5)) return alert('La altura debe registrarse en metros, por ejemplo 1.75.');
+  const nombrePaciente = String(datos.get('pacienteNombre') || '').trim();
+  const pacientes = await DB.getAll(DB.STORES.pacientes);
+  const pacienteEncontrado = pacientes.find(p => String(p.nombre || '').trim().toLocaleLowerCase('es-MX') === nombrePaciente.toLocaleLowerCase('es-MX'));
+  const numeroOpcional = value => String(value == null ? '' : value).trim() === '' ? null : Number(value);
+  const imc = peso > 0 && tallaM > 0 ? Number((peso / (tallaM * tallaM)).toFixed(2)) : null;
   const registro = {
-    pacienteId: Number(datos.get('pacienteId')),
-    paciente: String(form.elements.pacienteId.selectedOptions[0]?.textContent || '').trim(),
+    pacienteId: pacienteEncontrado ? Number(pacienteEncontrado.id) : null,
+    paciente: pacienteEncontrado ? pacienteEncontrado.nombre : nombrePaciente,
     responsable: String(datos.get('responsable') || '').trim(),
-    presion: String(datos.get('presion') || '').trim(),
-    fc: Number(datos.get('fc')),
-    fr: Number(datos.get('fr')),
-    temperatura: Number(datos.get('temperatura')),
-    peso,
-    talla,
-    imc: Number((peso / (tallaM * tallaM)).toFixed(2)),
-    spo2: Number(datos.get('spo2')),
+    presion: String(datos.get('presion') || '').trim().replace(/^(\d{2,3})\s*(\d{2,3})$/, '$1/$2'),
+    fc: numeroOpcional(datos.get('fc')), fr: numeroOpcional(datos.get('fr')),
+    temperatura: numeroOpcional(datos.get('temperatura')), peso, talla: tallaM, imc,
+    spo2: numeroOpcional(datos.get('spo2')),
     observaciones: String(datos.get('observaciones') || '').trim(),
     fechaHora: new Date().toISOString()
   };
@@ -2408,17 +2406,19 @@ async function renderAgenda() {
     '<div class="card"><div class="card-header"><h3>Citas del ' + featureEscape(APP.agendaSelectedDate) + '</h3>' +
     '<button class="btn btn-primary btn-sm" onclick="openAgendaModal(null,\'' + APP.agendaSelectedDate + '\')">+ Agendar este día</button></div>' +
     '<div class="card-body">' +
+    (APP.agendaSelectedDate === localDateString(new Date()) ? '<div class="alert alert-info"><strong>Notificación de hoy:</strong> ' + (citasDia.filter(function(c){return c.estado !== 'Cancelada';}).length ? citasDia.filter(function(c){return c.estado !== 'Cancelada';}).sort(function(a,b){return String(a.hora||'').localeCompare(String(b.hora||''));}).map(function(c){return featureEscape(c.hora || 'Sin hora') + ' — ' + featureEscape(patientName(c.pacienteId)) + ' (' + featureEscape(doctorName(c.medicoId)) + ')';}).join('<br>') : 'No hay citas programadas para hoy.') + '</div>' : '') +
     (citasDia.length ? '<div class="table-responsive"><table><thead><tr><th>Hora</th><th>Paciente</th><th>Médico</th><th>Motivo</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>' +
       citasDia.map(function (c) {
         return '<tr><td>' + featureEscape(c.hora || '—') + '</td><td><strong>' + featureEscape(patientName(c.pacienteId)) + '</strong></td>' +
           '<td>' + featureEscape(doctorName(c.medicoId)) + '</td><td>' + featureEscape(c.motivo || '—') + '</td>' +
           '<td>' + featureEscape(c.estado || 'Programada') + '</td><td>' +
-          (c.estado === 'Cancelada' ? '' : '<button class="btn btn-outline btn-sm" onclick="openAgendaModal(' + Number(c.id) + ')">Editar</button> ' +
-          '<button class="btn btn-danger btn-sm" onclick="cancelarCitaAgenda(' + Number(c.id) + ')">Cancelar</button>') + '</td></tr>';
+          (c.estado === 'Cancelada' || c.estado === 'Eliminada' ? '<button class="btn btn-danger btn-sm" onclick="eliminarCitaAgenda(' + Number(c.id) + ')">Eliminar</button>' : '<button class="btn btn-success btn-sm" onclick="confirmarCitaAgenda(' + Number(c.id) + ')">' + (c.estado === 'Confirmada' ? 'Confirmada ✓' : 'Confirmar') + '</button> <button class="btn btn-outline btn-sm" onclick="openAgendaModal(' + Number(c.id) + ')">Editar</button> <button class="btn btn-danger btn-sm" onclick="cancelarCitaAgenda(' + Number(c.id) + ')">No se llevará a cabo</button>') + '</td></tr>';
       }).join('') + '</tbody></table></div>' : '<div class="empty-state"><p>No hay citas para este día.</p></div>') +
     '</div></div>';
 }
 
+async function confirmarCitaAgenda(id) { const cita = await DB.get('agenda', id); if (!cita) return alert('No se encontró la cita.'); cita.estado = 'Confirmada'; cita.actualizadoPor = APP.currentUser; cita.updatedAt = new Date().toISOString(); await DB.put('agenda', cita); await renderAgenda(); }
+async function eliminarCitaAgenda(id) { if (!confirm('¿Eliminar esta cita cancelada? Esta acción no se puede deshacer.')) return; try { await DB.remove('agenda', id); await renderAgenda(); } catch (error) { alert('No se pudo eliminar la cita: ' + error.message); } }
 function agendaMoverMes(delta) {
   APP.agendaMonth = new Date(APP.agendaMonth.getFullYear(), APP.agendaMonth.getMonth() + delta, 1);
   renderAgenda();
@@ -2835,6 +2835,7 @@ async function eliminarEmpleado(id) {
 // ========== CUENTAS DEL PERSONAL ==========
 async function renderPersonal() {
   if (APP.currentRole !== 'admin') return alert('Solo un administrador puede gestionar accesos.');
+  if (!APP.personalAccessGranted) { const codigo = prompt('Introduce el código de acceso del personal:'); if (codigo !== '199703') { alert('Código incorrecto.'); return; } APP.personalAccessGranted = true; }
   const area = document.getElementById('content-area');
   const users = await DB.getAll('personal');
   const roleLabels = { admin: 'Administrador', medico: 'Médico', enfermeria: 'Enfermería', empleado: 'Personal / recepción' };
