@@ -544,39 +544,94 @@ async function renderPacientes() {
         <button class="btn btn-primary btn-sm" onclick="openPacienteModal()">+ Nuevo Paciente</button>
       </div>
       <div class="card-body">
-        ${pacientes.length === 0
-          ? '<div class="empty-state"><div class="icon">👤</div><p>No hay pacientes registrados.</p></div>'
-          : `<div class="table-responsive"><table>
-              <thead>
-                <tr>
-                  <th>Nombre</th>
-                  <th>Fecha nac.</th>
-                  <th>Género</th>
-                  <th>Teléfono</th>
-                  <th>Médico</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${pacientes.map(p => `
+        <div class="pacientes-buscador">
+          <label for="pacientes-busqueda"><strong>Buscar paciente registrado</strong></label>
+          <input type="search" class="form-control" id="pacientes-busqueda"
+            placeholder="Escribe nombre, apellido o teléfono..."
+            autocomplete="off" aria-describedby="pacientes-busqueda-ayuda">
+          <small id="pacientes-busqueda-ayuda" class="text-muted">Busca antes de crear un expediente para verificar si el paciente ya está registrado.</small>
+        </div>
+        <p id="pacientes-busqueda-resumen" class="text-muted" aria-live="polite"></p>
+        <div id="pacientes-listado">
+          ${pacientes.length === 0
+            ? '<div class="empty-state"><div class="icon">👤</div><p>No hay pacientes registrados.</p></div>'
+            : `<div class="table-responsive"><table>
+                <thead>
                   <tr>
-                    <td><strong>${escapeHtml(p.nombre)}</strong></td>
-                    <td>${p.fechaNac || '—'}</td>
-                    <td>${p.genero || '—'}</td>
-                    <td>${escapeHtml(p.telefono || '—')}</td>
-                    <td>${escapeHtml(getMedicoName(p.medicoId))}</td>
-                    <td>
-                      <button class="btn btn-outline btn-sm" onclick="openPacienteModal(${p.id})">Editar</button>
-                      <button class="btn btn-danger btn-sm" onclick="deletePaciente(${p.id})">Eliminar</button>
-                    </td>
+                    <th>Nombre</th>
+                    <th>Fecha nac.</th>
+                    <th>Género</th>
+                    <th>Teléfono</th>
+                    <th>Médico</th>
+                    <th>Acciones</th>
                   </tr>
-                `).join('')}
-              </tbody>
-            </table></div>`
-        }
+                </thead>
+                <tbody id="pacientes-tabla-cuerpo">
+                  ${pacientes.map(p => `
+                    <tr data-paciente-busqueda="${escapeAttr([p.nombre || '', p.telefono || '', p.fechaNac || '', p.genero || '', getMedicoName(p.medicoId)].join(' '))}">
+                      <td><strong>${escapeHtml(p.nombre || '—')}</strong></td>
+                      <td>${p.fechaNac ? escapeHtml(formatDate(p.fechaNac)) : '—'}</td>
+                      <td>${escapeHtml(p.genero || '—')}</td>
+                      <td>${escapeHtml(p.telefono || '—')}</td>
+                      <td>${escapeHtml(getMedicoName(p.medicoId))}</td>
+                      <td>
+                        <button class="btn btn-outline btn-sm" onclick="openPacienteModal(${p.id})">Editar</button>
+                        <button class="btn btn-danger btn-sm" onclick="deletePaciente(${p.id})">Eliminar</button>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table></div>`
+          }
+        </div>
       </div>
     </div>
   `;
+
+  const busqueda = document.getElementById('pacientes-busqueda');
+  const resumen = document.getElementById('pacientes-busqueda-resumen');
+  const listado = document.getElementById('pacientes-listado');
+  const cuerpo = document.getElementById('pacientes-tabla-cuerpo');
+
+  function normalizarTexto(valor) {
+    return String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es-MX').trim();
+  }
+
+  function filtrarPacientes() {
+    const termino = normalizarTexto(busqueda.value);
+    if (!pacientes.length) {
+      resumen.textContent = 'Todavía no hay pacientes registrados.';
+      return;
+    }
+
+    const filas = cuerpo ? Array.from(cuerpo.querySelectorAll('tr[data-paciente-busqueda]')) : [];
+    let coincidencias = 0;
+    filas.forEach(function (fila) {
+      const coincide = !termino || normalizarTexto(fila.getAttribute('data-paciente-busqueda')).includes(termino);
+      fila.hidden = !coincide;
+      if (coincide) coincidencias++;
+    });
+
+    let sinResultados = document.getElementById('pacientes-sin-resultados');
+    if (termino && coincidencias === 0) {
+      if (!sinResultados && cuerpo) {
+        sinResultados = document.createElement('tr');
+        sinResultados.id = 'pacientes-sin-resultados';
+        sinResultados.innerHTML = '<td colspan="6" class="text-muted">No se encontraron pacientes con ese nombre o teléfono. Verifica la búsqueda antes de registrar uno nuevo.</td>';
+        cuerpo.appendChild(sinResultados);
+      }
+      if (sinResultados) sinResultados.hidden = false;
+    } else if (sinResultados) {
+      sinResultados.hidden = true;
+    }
+
+    resumen.textContent = termino
+      ? 'Coincidencias: ' + coincidencias + ' de ' + pacientes.length + ' pacientes.'
+      : 'Pacientes registrados: ' + pacientes.length + '. Escribe para filtrar la lista.';
+  }
+
+  busqueda.addEventListener('input', filtrarPacientes);
+  filtrarPacientes();
 }
 
 function openPacienteModal(id = null) {
