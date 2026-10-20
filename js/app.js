@@ -1335,13 +1335,17 @@ async function renderBalance() {
   const medicos = await DB.getAll(DB.STORES.medicos);
   const pagados = cobros.filter(c => c.status === 'pagado');
 
-  // Totales
-  const totalMedico = pagados.filter(c => c.tipo === 'medico').reduce((s, c) => s + (parseFloat(c.monto) || 0), 0);
-  const totalLab = pagados.filter(c => c.tipo === 'laboratorio').reduce((s, c) => s + (parseFloat(c.monto) || 0), 0);
-  const total = totalMedico + totalLab;
+  const totalMedico = pagados
+    .filter(c => c.tipo === 'medico')
+    .reduce((s, c) => s + (parseFloat(c.monto) || 0), 0);
 
-  // Por médico
+  const totalLab = pagados
+    .filter(c => c.tipo === 'laboratorio')
+    .reduce((s, c) => s + (parseFloat(c.monto) || 0), 0);
+
+  const total = totalMedico + totalLab;
   const porMedico = {};
+
   pagados.forEach(c => {
     const key = c.medicoId || 'sin_medico';
     if (!porMedico[key]) porMedico[key] = 0;
@@ -1349,27 +1353,80 @@ async function renderBalance() {
   });
 
   const area = document.getElementById('content-area');
+
+  const cobrosOrdenados = cobros.slice().sort((a, b) =>
+    new Date(b.fecha || 0).getTime() - new Date(a.fecha || 0).getTime()
+  );
+
+  const filasCobros = cobrosOrdenados.map(c => {
+    const estatus = c.status === 'pagado'
+      ? '<span class="badge badge-success">Pagado</span>'
+      : c.status === 'cancelado'
+        ? '<span class="badge badge-danger">Cancelado</span>'
+        : '<span class="badge badge-warning">Pendiente</span>';
+
+    const medico = medicos.find(m => m.id == c.medicoId);
+    const nombreMedico = medico ? escapeHtml(medico.nombre) : '—';
+
+    return `
+      <tr>
+        <td>${c.fecha ? new Date(c.fecha).toLocaleString('es-MX') : '—'}</td>
+        <td>${escapeHtml(c.concepto || '—')}</td>
+        <td>${escapeHtml(c.referencia || '—')}</td>
+        <td>${c.tipo === 'laboratorio' ? 'Laboratorio' : 'Médico'}</td>
+        <td>${nombreMedico}</td>
+        <td><strong>$${(parseFloat(c.monto) || 0).toFixed(2)}</strong></td>
+        <td>${estatus}</td>
+        <td>
+          <button class="btn btn-outline btn-sm"
+            onclick="openCobroModal(${Number(c.id)})">Editar</button>
+          ${c.status !== 'cancelado'
+            ? `<button class="btn btn-danger btn-sm"
+                onclick="cancelarCobro(${Number(c.id)})">Cancelar</button>`
+            : ''}
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  const auditorias = [];
+  cobros.forEach(c => {
+    (c.audit || []).forEach(a => {
+      auditorias.push({
+        ...a,
+        cobroId: c.id,
+        concepto: c.concepto
+      });
+    });
+  });
+
+  auditorias.sort((a, b) =>
+    new Date(b.fecha || 0).getTime() - new Date(a.fecha || 0).getTime()
+  );
+
   area.innerHTML = `
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-icon blue">👨‍⚕️</div>
         <div class="stat-info">
           <h4>$${totalMedico.toFixed(2)}</h4>
-          <p>Cobros médicos</p>
+          <p>Cobros médicos pagados</p>
         </div>
       </div>
+
       <div class="stat-card">
         <div class="stat-icon green">🧪</div>
         <div class="stat-info">
           <h4>$${totalLab.toFixed(2)}</h4>
-          <p>Cobros laboratorio</p>
+          <p>Cobros de laboratorio pagados</p>
         </div>
       </div>
+
       <div class="stat-card">
         <div class="stat-icon purple">📊</div>
         <div class="stat-info">
           <h4>$${total.toFixed(2)}</h4>
-          <p>Total general</p>
+          <p>Total pagado vigente</p>
         </div>
       </div>
     </div>
@@ -1377,12 +1434,15 @@ async function renderBalance() {
     <div class="card">
       <div class="card-header">
         <h3>Desglose por médico</h3>
-        <button class="btn btn-primary btn-sm" onclick="imprimirBalance()">Imprimir PDF</button>
+        <button class="btn btn-primary btn-sm"
+          onclick="imprimirBalance()">Imprimir PDF</button>
       </div>
       <div class="card-body">
         <div class="table-responsive">
           <table>
-            <thead><tr><th>Médico</th><th>Total cobrado</th></tr></thead>
+            <thead>
+              <tr><th>Médico</th><th>Total cobrado</th></tr>
+            </thead>
             <tbody>
               ${Object.entries(porMedico).map(([key, monto]) => {
                 let nombre = 'Sin médico asignado';
@@ -1390,7 +1450,12 @@ async function renderBalance() {
                   const m = medicos.find(x => x.id == key);
                   nombre = m ? m.nombre : `ID ${key}`;
                 }
-                return `<tr><td>${escapeHtml(nombre)}</td><td><strong>$${monto.toFixed(2)}</strong></td></tr>`;
+                return `
+                  <tr>
+                    <td>${escapeHtml(nombre)}</td>
+                    <td><strong>$${monto.toFixed(2)}</strong></td>
+                  </tr>
+                `;
               }).join('') || '<tr><td colspan="2">Sin datos</td></tr>'}
             </tbody>
           </table>
@@ -1399,32 +1464,101 @@ async function renderBalance() {
     </div>
 
     <div class="card">
-      <div class="card-header"><h3>Historial de modificaciones (auditoría)</h3></div>
+      <div class="card-header">
+        <h3>Todos los cobros</h3>
+      </div>
       <div class="card-body">
-        ${(() => {
-          const audits = [];
-          cobros.forEach(c => {
-            (c.audit || []).forEach(a => {
-              audits.push({ ...a, cobroId: c.id, concepto: c.concepto });
-            });
-          });
-          if (audits.length === 0) return '<p class="text-muted">No hay registros de auditoría.</p>';
-          return `<div class="table-responsive"><table>
-            <thead><tr><th>Fecha</th><th>Cobro</th><th>Acción</th></tr></thead>
-            <tbody>
-              ${audits.slice(-20).reverse().map(a => `
-                <tr>
-                  <td>${formatDate(a.fecha)}</td>
-                  <td>${escapeHtml(a.concepto || '#' + a.cobroId)}</td>
-                  <td>${a.accion}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table></div>`;
-        })()}
+        ${cobrosOrdenados.length === 0
+          ? '<p class="text-muted">No hay cobros registrados.</p>'
+          : `<div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Concepto</th>
+                    <th>Paciente / Referencia</th>
+                    <th>Tipo</th>
+                    <th>Médico</th>
+                    <th>Monto</th>
+                    <th>Estatus</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>${filasCobros}</tbody>
+              </table>
+            </div>`
+        }
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Historial de modificaciones y cancelaciones</h3>
+      </div>
+      <div class="card-body">
+        ${auditorias.length === 0
+          ? '<p class="text-muted">No hay registros de auditoría.</p>'
+          : `<div class="table-responsive">
+              <table>
+                <thead>
+                  <tr><th>Fecha</th><th>Cobro</th><th>Acción</th></tr>
+                </thead>
+                <tbody>
+                  ${auditorias.slice(0, 50).map(a => `
+                    <tr>
+                      <td>${a.fecha ? new Date(a.fecha).toLocaleString('es-MX') : '—'}</td>
+                      <td>${escapeHtml(a.concepto || '#' + a.cobroId)}</td>
+                      <td>${escapeHtml(a.accion || '—')}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>`
+        }
       </div>
     </div>
   `;
+}
+
+async function cancelarCobro(id) {
+  const confirmado = confirm(
+    '¿Deseas cancelar este cobro? Se conservará en el historial de auditoría y dejará de contar como pago vigente.'
+  );
+
+  if (!confirmado) return;
+
+  try {
+    const cobro = await DB.get(DB.STORES.cobros, id);
+
+    if (!cobro) {
+      alert('No se encontró el cobro seleccionado.');
+      return;
+    }
+
+    if (cobro.status === 'cancelado') {
+      alert('Este cobro ya está cancelado.');
+      return;
+    }
+
+    cobro.audit = cobro.audit || [];
+    cobro.audit.push({
+      fecha: new Date().toISOString(),
+      accion: 'cancelación',
+      anterior: {
+        monto: cobro.monto,
+        status: cobro.status,
+        concepto: cobro.concepto,
+        referencia: cobro.referencia
+      }
+    });
+
+    cobro.status = 'cancelado';
+
+    await DB.put(DB.STORES.cobros, cobro);
+    await renderBalance();
+  } catch (err) {
+    alert('No se pudo cancelar el cobro: ' + err.message);
+  }
 }
 
 // ========== RESPALDOS ==========
