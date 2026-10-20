@@ -1151,15 +1151,42 @@ async function deleteEstudio(id) {
   renderEstudios();
 }
 
-// ========== COBROS ==========
+ // ========== COBROS ==========
 async function renderCobros() {
   const cobros = await DB.getAll(DB.STORES.cobros);
-  const hoy = new Date().toISOString().slice(0, 10);
-  const delDia = cobros.filter(c => c.fecha && c.fecha.startsWith(hoy));
   const area = document.getElementById('content-area');
 
-  const totalPagado = delDia.filter(c => c.status === 'pagado').reduce((s, c) => s + (parseFloat(c.monto) || 0), 0);
-  const totalPendiente = delDia.filter(c => c.status === 'pendiente').reduce((s, c) => s + (parseFloat(c.monto) || 0), 0);
+  // Fecha de hoy en la zona horaria local.
+  const ahora = new Date();
+  const hoy = [
+    ahora.getFullYear(),
+    String(ahora.getMonth() + 1).padStart(2, '0'),
+    String(ahora.getDate()).padStart(2, '0')
+  ].join('-');
+
+  // Mostrar únicamente los cobros correspondientes al día local.
+  const delDia = cobros.filter(c => {
+    if (!c.fecha) return false;
+
+    const fechaCobro = new Date(c.fecha);
+    if (Number.isNaN(fechaCobro.getTime())) return false;
+
+    const fechaLocal = [
+      fechaCobro.getFullYear(),
+      String(fechaCobro.getMonth() + 1).padStart(2, '0'),
+      String(fechaCobro.getDate()).padStart(2, '0')
+    ].join('-');
+
+    return fechaLocal === hoy;
+  });
+
+  const totalPagado = delDia
+    .filter(c => c.status === 'pagado')
+    .reduce((s, c) => s + (parseFloat(c.monto) || 0), 0);
+
+  const totalPendiente = delDia
+    .filter(c => c.status === 'pendiente')
+    .reduce((s, c) => s + (parseFloat(c.monto) || 0), 0);
 
   area.innerHTML = `
     <div class="stats-grid" style="margin-bottom:1.25rem;">
@@ -1182,45 +1209,68 @@ async function renderCobros() {
     <div class="card">
       <div class="card-header">
         <h3>Cobros del día (${formatDate(hoy)})</h3>
-        <button class="btn btn-primary btn-sm" onclick="openCobroModal()">+ Nuevo Cobro</button>
+        <button class="btn btn-primary btn-sm"
+          onclick="openCobroModal()">+ Nuevo Cobro</button>
       </div>
+
       <div class="card-body">
         ${delDia.length === 0
           ? '<div class="empty-state"><p>No hay cobros registrados hoy.</p></div>'
-          : `<div class="table-responsive"><table>
-              <thead>
-                <tr>
-                  <th>Hora</th>
-                  <th>Concepto</th>
-                  <th>Paciente / Ref.</th>
-                  <th>Monto</th>
-                  <th>Tipo</th>
-                  <th>Estatus</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${delDia.map(c => `
+          : `<div class="table-responsive">
+              <table>
+                <thead>
                   <tr>
-                    <td>${c.fecha ? new Date(c.fecha).toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit'}) : '—'}</td>
-                    <td>${escapeHtml(c.concepto || '—')}</td>
-                    <td>${escapeHtml(c.referencia || '—')}</td>
-                    <td><strong>$${parseFloat(c.monto || 0).toFixed(2)}</strong></td>
-                    <td>${c.tipo === 'laboratorio' ? '<span class="badge badge-info">Lab</span>' : '<span class="badge badge-secondary">Médico</span>'}</td>
-                    <td>${c.status === 'pagado' ? '<span class="badge badge-success">Pagado</span>' : '<span class="badge badge-warning">Pendiente</span>'}</td>
-                    <td>
-                      <button class="btn btn-outline btn-sm" onclick="openCobroModal(${c.id})">Editar</button>
-                      ${c.status === 'pendiente' ? `<button class="btn btn-success btn-sm" onclick="marcarPagado(${c.id})">Marcar pagado</button>` : ''}
-                    </td>
+                    <th>Hora</th>
+                    <th>Concepto</th>
+                    <th>Paciente / Ref.</th>
+                    <th>Monto</th>
+                    <th>Tipo</th>
+                    <th>Estatus</th>
+                    <th>Acciones</th>
                   </tr>
-                `).join('')}
-              </tbody>
-            </table></div>`
+                </thead>
+                <tbody>
+                  ${delDia.map(c => `
+                    <tr>
+                      <td>${c.fecha
+                        ? new Date(c.fecha).toLocaleTimeString('es-MX', {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })
+                        : '—'}</td>
+
+                      <td>${escapeHtml(c.concepto || '—')}</td>
+                      <td>${escapeHtml(c.referencia || '—')}</td>
+                      <td><strong>$${(parseFloat(c.monto) || 0).toFixed(2)}</strong></td>
+
+                      <td>${c.tipo === 'laboratorio'
+                        ? '<span class="badge badge-info">Lab</span>'
+                        : '<span class="badge badge-secondary">Médico</span>'}</td>
+
+                      <td>${c.status === 'pagado'
+                        ? '<span class="badge badge-success">Pagado</span>'
+                        : '<span class="badge badge-warning">Pendiente</span>'}</td>
+
+                      <td>
+                        <button class="btn btn-outline btn-sm"
+                          onclick="openCobroModal(${c.id})">Editar</button>
+
+                        ${c.status === 'pendiente'
+                          ? `<button class="btn btn-success btn-sm"
+                              onclick="marcarPagado(${c.id})">Marcar pagado</button>`
+                          : ''}
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>`
         }
       </div>
     </div>
   `;
 }
+
 
 function openCobroModal(id = null) {
   APP.editingId = id;
