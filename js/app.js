@@ -111,7 +111,10 @@ function showApp() {
   if (adminNav) adminNav.style.display = APP.currentRole === 'admin' ? 'flex' : 'none';
   ['cobros', 'balance'].forEach(function (module) {
     const item = document.querySelector('.nav-item[data-module="' + module + '"]');
-    if (item) item.style.display = APP.currentRole === 'admin' ? 'flex' : 'none';
+    const canSee = module === 'cobros'
+      ? ['admin', 'empleado'].includes(APP.currentRole)
+      : APP.currentRole === 'admin';
+    if (item) item.style.display = canSee ? 'flex' : 'none';
   });
   navigateTo('dashboard');
 }
@@ -362,7 +365,7 @@ function openMedicoModal(id = null) {
   title.textContent = id ? 'Editar Médico' : 'Nuevo Médico';
 
   const load = async () => {
-    let m = { nombre: '', especialidad: '', cedula: '', cedulaEsp: '', domicilio: '', telefono: '', activo: true };
+    let m = { nombre: '', especialidad: '', cedula: '', cedulaEsp: '', domicilio: '', telefono: '', honorarios: '', activo: true };
     if (id) m = await DB.get(DB.STORES.medicos, id) || m;
 
     body.innerHTML = `
@@ -394,6 +397,11 @@ function openMedicoModal(id = null) {
         <label>Teléfono</label>
         <input type="text" class="form-control" id="m-telefono" value="${escapeAttr(m.telefono || '')}">
       </div>
+      <div class="form-group">
+        <label>Honorarios habituales por consulta (MXN)</label>
+        <input type="number" min="0" step="0.01" class="form-control" id="m-honorarios" value="${m.honorarios == null ? '' : escapeAttr(m.honorarios)}" placeholder="Ej. 800">
+        <small class="text-muted">Este importe se sugerirá al registrar el cobro. Puede cambiarse en cada consulta.</small>
+      </div>
     `;
 
     footer.innerHTML = `
@@ -420,6 +428,7 @@ async function saveMedico() {
     cedulaEsp: document.getElementById('m-cedulaEsp').value.trim(),
     domicilio: document.getElementById('m-domicilio').value.trim(),
     telefono: document.getElementById('m-telefono').value.trim(),
+    honorarios: document.getElementById('m-honorarios').value.trim() === '' ? null : Number(document.getElementById('m-honorarios').value),
     activo: true
   };
 
@@ -636,6 +645,7 @@ async function renderConsultas() {
                     <td>
                       <button class="btn btn-outline btn-sm" onclick="verConsulta(${c.id})">Ver</button>
                       <button class="btn btn-primary btn-sm" onclick="imprimirReceta(${c.id})">Receta</button>
+                      <button class="btn btn-success btn-sm" onclick="registrarCobroConsulta(${c.id})">${c.cobroId ? 'Ver cobro registrado' : 'Registrar cobros'}</button>
                     </td>
                   </tr>`;
                 }))).join('')}
@@ -989,9 +999,50 @@ async function verConsulta(id) {
   `;
   document.getElementById('modal-footer').innerHTML = `
     <button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>
-    <button class="btn btn-primary" onclick="imprimirReceta(${id}); closeModal();">Imprimir Receta</button>
+    <button class="btn btn-primary" onclick="imprimirReceta(${id})">Imprimir Receta</button>
+    <button class="btn btn-success" onclick="registrarCobroConsulta(${id})">${c.cobroId ? 'Ver cobro registrado' : 'Registrar cobros'}</button>
   `;
   modal.classList.add('show');
+}
+
+async function registrarCobroConsulta(consultaId) {
+  try {
+    const consulta = await DB.get(DB.STORES.consultas, consultaId);
+    if (!consulta) return alert('No se encontró la consulta.');
+    const paciente = await DB.get(DB.STORES.pacientes, consulta.pacienteId);
+    const medico = await DB.get(DB.STORES.medicos, consulta.medicoId);
+
+    if (consulta.cobroId) {
+      alert('Esta consulta ya fue enviada al área de cobros. Importe registrado: $' +
+        (Number(consulta.montoConsulta) || 0).toFixed(2) +
+        '. Recepción puede consultar el estado y confirmar el pago desde Cobros.');
+      return;
+    }
+
+    const sugerido = consulta.montoConsulta != null
+      ? consulta.montoConsulta
+      : (medico && medico.honorarios != null ? medico.honorarios : '');
+    const respuesta = prompt(
+      'REGISTRAR COBROS\nPaciente: ' + (paciente ? paciente.nombre : '—') +
+      '\nMédico: ' + (medico ? medico.nombre : '—') +
+      '\n\nConfirma el total a cobrar en MXN:',
+      String(sugerido)
+    );
+    if (respuesta === null) return;
+    const monto = Number(respuesta);
+    if (!Number.isFinite(monto) || monto <= 0 || monto > 10000000) {
+      return alert('Captura un importe válido mayor que cero.');
+    }
+
+    const resultado = await DB.registrarCobroConsulta(consultaId, monto);
+    alert(resultado.duplicate
+      ? 'La consulta ya estaba registrada en cobros. No se creó un duplicado.'
+      : 'Consulta enviada al área de Cobros. Total pendiente: $' + Number(resultado.cobro.monto).toFixed(2) +
+        '. Recepción podrá confirmar el pago.');
+    await renderConsultas();
+  } catch (error) {
+    alert('No se pudo registrar el cobro: ' + error.message);
+  }
 }
 
 // ========== MEDICAMENTOS ==========
@@ -1256,6 +1307,7 @@ async function renderCobros() {
                     <th>Paciente / Ref.</th>
                     <th>Monto</th>
                     <th>Tipo</th>
+                    <th>Método</th>
                     <th>Estatus</th>
                     <th>Acciones</th>
                   </tr>
@@ -1277,6 +1329,7 @@ async function renderCobros() {
                       <td>${c.tipo === 'laboratorio'
                         ? '<span class="badge badge-info">Lab</span>'
                         : '<span class="badge badge-secondary">Médico</span>'}</td>
+                      <td>${escapeHtml(c.metodoPago || '—')}</td>
 
                       <td>${c.status === 'pagado'
                         ? '<span class="badge badge-success">Pagado</span>'
@@ -1424,11 +1477,19 @@ async function saveCobro() {
 async function marcarPagado(id) {
   const c = await DB.get(DB.STORES.cobros, id);
   if (!c) return;
-  c.status = 'pagado';
-  c.audit = c.audit || [];
-  c.audit.push({ fecha: new Date().toISOString(), accion: 'marcado_pagado' });
-  await DB.put(DB.STORES.cobros, c);
-  renderCobros();
+  if (c.status === 'pagado') return alert('Este cobro ya está pagado.');
+  const metodoPago = prompt('Confirma el método de pago:\n1 = Efectivo\n2 = Tarjeta\n3 = Transferencia', '1');
+  if (metodoPago === null) return;
+  const metodos = { '1': 'Efectivo', '2': 'Tarjeta', '3': 'Transferencia' };
+  if (!metodos[metodoPago]) return alert('Selecciona 1, 2 o 3 para registrar un método válido.');
+  if (!confirm('¿Confirmar el cobro de $' + (Number(c.monto) || 0).toFixed(2) + ' por ' + metodos[metodoPago] + '?')) return;
+  try {
+    await DB.confirmarCobro(id, metodos[metodoPago]);
+    alert('Cobro confirmado correctamente.');
+    await renderCobros();
+  } catch (error) {
+    alert('No se pudo confirmar el cobro: ' + error.message);
+  }
 }
 
 // ========== BALANCE ==========
@@ -1823,6 +1884,9 @@ async function imprimirReceta(consultaId) {
   `;
 
   window.print();
+  if (confirm('Receta preparada. ¿Deseas registrar ahora el cobro de esta consulta?')) {
+    await registrarCobroConsulta(consultaId);
+  }
 }
 
 async function imprimirBalance() {

@@ -73,6 +73,20 @@ async function verifyNip(tipo, nip) {
   });
 }
 
+async function confirmarCobro(id, metodoPago) {
+  return api(`/api/cobros/${encodeURIComponent(id)}/confirmar`, {
+    method: 'POST',
+    body: JSON.stringify({ metodoPago })
+  });
+}
+
+async function registrarCobroConsulta(consultaId, monto) {
+  return api(`/api/consultas/${encodeURIComponent(consultaId)}/registrar-cobro`, {
+    method: 'POST',
+    body: JSON.stringify({ monto })
+  });
+}
+
 async function getCobrosHoy(fecha) {
   return api(
     `/api/dashboard/cobros-hoy?fecha=${encodeURIComponent(fecha)}`
@@ -259,6 +273,8 @@ window.DB = {
   logout,
   verifyNip,
   getCobrosHoy,
+  registrarCobroConsulta,
+  confirmarCobro,
   add,
   put,
   get,

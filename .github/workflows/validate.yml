@@ -6,6 +6,7 @@ on:
       - main
       - feature/chat-agenda-recetas
       - fix/empleados-password-admin
+      - feature/consultation-billing-handoff
   pull_request:
     branches:
       - main

@@ -222,33 +222,27 @@ function validFinanceToken(req, scope) {
 
 function requireFinanceWrite(req, res, next) {
   if (req.session?.role !== 'admin') {
-    return res.status(403).json({ error: 'Solo administración puede modificar los registros financieros.' });
+    return res.status(403).json({ error: 'Solo administración puede modificar registros financieros.' });
   }
-  if (
-    !validFinanceToken(req, 'cobros') &&
-    !validFinanceToken(req, 'balance')
-  ) {
+  if (!validFinanceToken(req, 'cobros') && !validFinanceToken(req, 'balance')) {
     return res.status(403).json({
       error: 'Vuelve a validar el NIP de Cobros o Balance para modificar registros.'
     });
   }
-
   next();
 }
 
 function requireFinanceRead(req, res, next) {
-  if (req.session?.role !== 'admin') {
-    return res.status(403).json({ error: 'Solo administración puede consultar los registros financieros.' });
+  const role = req.session?.role;
+  if (role === 'empleado' && validFinanceToken(req, 'cobros')) return next();
+  if (role !== 'admin') {
+    return res.status(403).json({ error: 'Solo administración o recepción autorizada puede consultar cobros.' });
   }
-  if (
-    !validFinanceToken(req, 'cobros') &&
-    !validFinanceToken(req, 'balance')
-  ) {
+  if (!validFinanceToken(req, 'cobros') && !validFinanceToken(req, 'balance')) {
     return res.status(403).json({
-      error: 'Ingresa el NIP de Cobros o Balance para consultar los registros financieros.'
+      error: 'Ingresa el NIP de Cobros o Balance para consultar registros financieros.'
     });
   }
-
   next();
 }
 
@@ -584,6 +578,158 @@ app.post('/api/chat', requireAuth, async (req, res, next) => {
     res.status(201).json(result.rows[0]);
   } catch (error) {
     next(error);
+  }
+});
+
+app.post('/api/consultas/:id/registrar-cobro', requireAuth, async (req, res, next) => {
+  if (!['admin', 'medico'].includes(req.session?.role)) {
+    return res.status(403).json({ error: 'Solo el médico o administración puede enviar una consulta a cobros.' });
+  }
+
+  const consultaId = Number(req.params.id);
+  const monto = Number(req.body?.monto);
+  if (!Number.isSafeInteger(consultaId) || consultaId < 1 || !Number.isFinite(monto) || monto <= 0 || monto > 10000000) {
+    return res.status(400).json({ error: 'Consulta o importe inválido. El importe debe ser mayor que cero.' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const consultaResult = await client.query(
+      "SELECT data FROM app_records WHERE store='consultas' AND record_key=$1 FOR UPDATE",
+      [String(consultaId)]
+    );
+    if (!consultaResult.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'No se encontró la consulta.' });
+    }
+
+    const consulta = consultaResult.rows[0].data;
+    const existingResult = await client.query(
+      "SELECT data FROM app_records WHERE store='cobros' AND data->>'consultaId'=$1 LIMIT 1 FOR UPDATE",
+      [String(consultaId)]
+    );
+    if (existingResult.rowCount) {
+      const existing = existingResult.rows[0].data;
+      consulta.cobroId = existing.id;
+      consulta.montoConsulta = Number(existing.monto) || monto;
+      consulta.cobroRegistradoAt = consulta.cobroRegistradoAt || existing.fecha;
+      await client.query(
+        "UPDATE app_records SET data=$2, updated_at=NOW() WHERE store='consultas' AND record_key=$1",
+        [String(consultaId), consulta]
+      );
+      await client.query('COMMIT');
+      return res.json({ cobro: existing, duplicate: true });
+    }
+
+    const patientResult = await client.query(
+      "SELECT data FROM app_records WHERE store='pacientes' AND record_key=$1",
+      [String(consulta.pacienteId)]
+    );
+    const doctorResult = await client.query(
+      "SELECT data FROM app_records WHERE store='medicos' AND record_key=$1",
+      [String(consulta.medicoId)]
+    );
+    const paciente = patientResult.rows[0]?.data;
+    const medico = doctorResult.rows[0]?.data;
+    const sequence = await client.query(
+      `INSERT INTO app_sequences(store, next_id) VALUES('cobros', 1)
+       ON CONFLICT(store) DO UPDATE SET next_id=app_sequences.next_id+1
+       RETURNING next_id`
+    );
+    const cobroId = Number(sequence.rows[0].next_id);
+    const now = new Date().toISOString();
+    const user = req.session?.displayName || req.session?.username || 'Personal';
+    const cobro = {
+      id: cobroId,
+      concepto: 'Consulta médica',
+      referencia: (paciente?.nombre || 'Paciente') + (medico?.nombre ? ' | Dr(a). ' + medico.nombre : ''),
+      monto,
+      tipo: 'medico',
+      status: 'pendiente',
+      medicoId: consulta.medicoId || null,
+      pacienteId: consulta.pacienteId || null,
+      consultaId,
+      fecha: now,
+      creadoPor: user,
+      audit: [{ fecha: now, accion: 'registrado_desde_consulta', usuario: user, consultaId }]
+    };
+
+    consulta.montoConsulta = monto;
+    consulta.cobroId = cobroId;
+    consulta.cobroRegistradoAt = now;
+    consulta.cobroRegistradoPor = user;
+
+    await client.query(
+      "UPDATE app_records SET data=$2, updated_at=NOW() WHERE store='consultas' AND record_key=$1",
+      [String(consultaId), consulta]
+    );
+    await client.query(
+      "INSERT INTO app_records(store, record_key, data) VALUES('cobros',$1,$2)",
+      [String(cobroId), cobro]
+    );
+    await client.query('COMMIT');
+    res.status(201).json({ cobro, duplicate: false });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(error);
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/cobros/:id/confirmar', requireAuth, async (req, res, next) => {
+  const role = req.session?.role;
+  if (!['admin', 'empleado'].includes(role)) {
+    return res.status(403).json({ error: 'Solo recepción o administración puede confirmar el cobro.' });
+  }
+  if (!validFinanceToken(req, 'cobros')) {
+    return res.status(403).json({ error: 'Valida el NIP de Cobros antes de confirmar un pago.' });
+  }
+
+  const id = Number(req.params.id);
+  const metodoPago = req.body?.metodoPago;
+  if (!Number.isSafeInteger(id) || id < 1 || !['Efectivo', 'Tarjeta', 'Transferencia'].includes(metodoPago)) {
+    return res.status(400).json({ error: 'Cobro o método de pago inválido.' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const found = await client.query(
+      "SELECT data FROM app_records WHERE store='cobros' AND record_key=$1 FOR UPDATE",
+      [String(id)]
+    );
+    if (!found.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'No se encontró el cobro.' });
+    }
+    const cobro = found.rows[0].data;
+    if (cobro.status === 'pagado') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Este cobro ya fue confirmado.' });
+    }
+
+    const now = new Date().toISOString();
+    const user = req.session?.displayName || req.session?.username || 'Recepción';
+    cobro.status = 'pagado';
+    cobro.metodoPago = metodoPago;
+    cobro.cobradoPor = user;
+    cobro.cobradoAt = now;
+    cobro.audit = Array.isArray(cobro.audit) ? cobro.audit : [];
+    cobro.audit.push({ fecha: now, accion: 'marcado_pagado', metodoPago, usuario: user });
+
+    await client.query(
+      "UPDATE app_records SET data=$2, updated_at=NOW() WHERE store='cobros' AND record_key=$1",
+      [String(id), cobro]
+    );
+    await client.query('COMMIT');
+    res.json(cobro);
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(error);
+  } finally {
+    client.release();
   }
 });
 
