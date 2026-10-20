@@ -1,0 +1,22 @@
+name: Validate JavaScript
+on:
+  push:
+    branches:
+      - main
+      - feature/chat-agenda-recetas
+  pull_request:
+    branches:
+      - main
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Check JavaScript syntax
+        run: |
+          node --check server.js
+          node --check js/db.js
+          node --check js/app.js
