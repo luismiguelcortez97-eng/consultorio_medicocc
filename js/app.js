@@ -4,7 +4,11 @@
 
 const APP = {
   currentUser: null,
+  currentRole: 'admin',
   currentModule: 'dashboard',
+  chatTimer: null,
+  agendaMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+  agendaSelectedDate: new Date().toISOString().slice(0, 10),
   editingId: null,
   tempConsulta: null, // for building consultation
   unlockedCobros: false,
@@ -27,7 +31,8 @@ async function checkSession() {
   const session = await DB.getSession();
   if (session && session.username) {
     APP.currentUser = session.username;
-    document.querySelector('.topbar-actions .text-muted').textContent = session.username;
+    APP.currentRole = session.role || 'admin';
+    document.querySelector('.topbar-actions .text-muted').textContent = session.displayName || session.username;
     try { await DB.seedIfEmpty(); } catch (e) { console.error('No se pudieron preparar catálogos:', e); }
     showApp();
   } else showLogin();
@@ -74,7 +79,8 @@ async function handleLogin(e) {
   try {
     const session = await DB.login(user, pass);
     APP.currentUser = session.username;
-    document.querySelector('.topbar-actions .text-muted').textContent = session.username;
+    APP.currentRole = session.role || 'admin';
+    document.querySelector('.topbar-actions .text-muted').textContent = session.displayName || session.username;
     errorEl.style.display = 'none';
     await DB.seedIfEmpty();
     showApp();
@@ -87,6 +93,7 @@ async function handleLogin(e) {
 async function logout() {
   await DB.logout();
   APP.currentUser = null;
+  APP.currentRole = 'admin';
   APP.unlockedCobros = false;
   APP.unlockedBalance = false;
   showLogin();
@@ -100,11 +107,21 @@ function showLogin() {
 function showApp() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
+  const adminNav = document.querySelector('.nav-item[data-module="personal"]');
+  if (adminNav) adminNav.style.display = APP.currentRole === 'admin' ? 'flex' : 'none';
   navigateTo('dashboard');
 }
 
 // ========== NAVIGATION ==========
 async function navigateTo(module) {
+  if (APP.chatTimer && module !== 'chat') {
+    clearInterval(APP.chatTimer);
+    APP.chatTimer = null;
+  }
+  if (module === 'personal' && APP.currentRole !== 'admin') {
+    alert('Solo el administrador puede gestionar las cuentas del personal.');
+    return;
+  }
   // Check NIP for protected modules
   if (module === 'cobros' && !APP.unlockedCobros) {
     showNipModal('cobros');
@@ -128,6 +145,10 @@ async function navigateTo(module) {
     medicos: 'Médicos',
     pacientes: 'Pacientes y Expedientes',
     consultas: 'Consultas Médicas',
+    agenda: 'Agenda mensual de consultas',
+    chat: 'Chat interno del personal',
+    recetas: 'Receta independiente',
+    personal: 'Accesos del personal',
     medicamentos: 'Medicamentos',
     estudios: 'Estudios de Laboratorio',
     cobros: 'Cobros y Ventas del Día',
@@ -147,6 +168,10 @@ async function navigateTo(module) {
       case 'medicos': await renderMedicos(); break;
       case 'pacientes': await renderPacientes(); break;
       case 'consultas': await renderConsultas(); break;
+      case 'agenda': await renderAgenda(); break;
+      case 'chat': await renderChat(); break;
+      case 'recetas': await renderRecetas(); break;
+      case 'personal': await renderPersonal(); break;
       case 'medicamentos': await renderMedicamentos(); break;
       case 'estudios': await renderEstudios(); break;
       case 'cobros': await renderCobros(); break;
