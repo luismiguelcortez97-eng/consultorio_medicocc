@@ -123,8 +123,10 @@ function showApp() {
   navigateTo('dashboard');
   if (APP.chatWatchTimer) clearInterval(APP.chatWatchTimer);
   APP.chatLastMessageId = null;
+  APP.chatCheckInProgress = false;
   APP.chatWatchTimer = setInterval(async function () {
-    if (!APP.currentUser) return;
+    if (!APP.currentUser || APP.chatCheckInProgress) return;
+    APP.chatCheckInProgress = true;
     try {
       const messages = await DB.getAll('chat');
       procesarNotificacionesChat(messages);
@@ -134,7 +136,8 @@ function showApp() {
       const dot = document.getElementById('chat-unread-dot');
       if (dot) dot.hidden = APP.currentModule === 'chat' || maxId <= lastSeen;
     } catch (e) { console.debug('No se pudo revisar chat', e); }
-  }, 10000);
+    finally { APP.chatCheckInProgress = false; }
+  }, 1000);
 }
 
 // ========== SONIDO DE NOTIFICACIÓN DEL CHAT (SOLO ENFERMERÍA) ==========
