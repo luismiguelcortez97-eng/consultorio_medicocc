@@ -184,14 +184,20 @@ function validFinanceToken(req, scope) {
   }
 }
 
+
 function requireFinanceWrite(req, res, next) {
-  if (!validFinanceToken(req, 'cobros')) {
+  if (
+    !validFinanceToken(req, 'cobros') &&
+    !validFinanceToken(req, 'balance')
+  ) {
     return res.status(403).json({
-      error: 'Vuelve a validar el NIP de Cobros para modificar registros.'
+      error: 'Vuelve a validar el NIP de Cobros o Balance para modificar registros.'
     });
   }
 
   next();
+}
+
 }
 
 function requireFinanceRead(req, res, next) {
