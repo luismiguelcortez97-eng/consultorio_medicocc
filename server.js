@@ -217,6 +217,9 @@ function validFinanceToken(req, scope) {
 
 
 function requireFinanceWrite(req, res, next) {
+  if (req.session?.role !== 'admin') {
+    return res.status(403).json({ error: 'Solo administración puede modificar los registros financieros.' });
+  }
   if (
     !validFinanceToken(req, 'cobros') &&
     !validFinanceToken(req, 'balance')
@@ -230,6 +233,9 @@ function requireFinanceWrite(req, res, next) {
 }
 
 function requireFinanceRead(req, res, next) {
+  if (req.session?.role !== 'admin') {
+    return res.status(403).json({ error: 'Solo administración puede consultar los registros financieros.' });
+  }
   if (
     !validFinanceToken(req, 'cobros') &&
     !validFinanceToken(req, 'balance')
@@ -466,7 +472,7 @@ app.post('/api/auth/verify-nip', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/api/dashboard/cobros-hoy', requireAuth, async (req, res, next) => {
+app.get('/api/dashboard/cobros-hoy', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const fecha = String(req.query.fecha || '');
 
