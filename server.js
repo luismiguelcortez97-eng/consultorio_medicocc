@@ -229,8 +229,8 @@ function requireFinanceWrite(req, res, next) {
 
 function requireFinanceRead(req, res, next) {
   const role = req.session?.role;
-  if (['admin', 'empleado'].includes(role)) return next();
-  return res.status(403).json({ error: 'Solo administración o recepción autorizada puede consultar cobros.' });
+  if (['admin', 'empleado', 'enfermeria'].includes(role)) return next();
+  return res.status(403).json({ error: 'No tienes permisos para consultar cobros.' });
 }
 
 function validStore(store) {
@@ -724,10 +724,11 @@ app.get('/api/balance/cobros', requireAuth, requireAdmin, (req, res, next) => {
 app.get(
   '/api/data/:store',
   requireAuth,
-  (req, res, next) =>
-    req.params.store === 'cobros'
-      ? requireFinanceRead(req, res, next)
-      : next(),
+  (req, res, next) => {
+    if (req.params.store === 'cobros') return requireFinanceRead(req, res, next);
+    if (req.params.store === 'empleados') return requireAdmin(req, res, next);
+    return next();
+  },
   async (req, res, next) => {
     try {
       const { store } = req.params;
