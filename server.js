@@ -20,7 +20,6 @@ const STORES = new Set([
   'config',
   'enfermeria',
   'empleados',
-  'chat',
   'agenda',
   'plantillas_receta',
   'recetas'
@@ -57,6 +56,17 @@ app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: '5mb' }));
 
 async function initDb() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id BIGSERIAL PRIMARY KEY,
+      sender_username TEXT NOT NULL,
+      sender_name TEXT NOT NULL,
+      sender_role TEXT NOT NULL,
+      message TEXT NOT NULL CHECK (char_length(message) BETWEEN 1 AND 2000),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query('CREATE INDEX IF NOT EXISTS chat_messages_created_idx ON chat_messages(created_at DESC)');
   await pool.query(`
     CREATE TABLE IF NOT EXISTS staff_users (
       id BIGSERIAL PRIMARY KEY,
@@ -485,6 +495,35 @@ app.get('/api/dashboard/cobros-hoy', requireAuth, async (req, res, next) => {
     );
 
     res.json({ total, count: cobros.length });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/chat', requireAuth, async (_req, res, next) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, sender_username AS "senderUsername", sender_name AS "senderName", sender_role AS "senderRole", message, created_at AS "createdAt" FROM chat_messages ORDER BY id DESC LIMIT 300'
+    );
+    res.json(result.rows.reverse());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/chat', requireAuth, async (req, res, next) => {
+  try {
+    const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+    if (!message || message.length > 2000) {
+      return res.status(400).json({ error: 'El mensaje debe tener entre 1 y 2000 caracteres.' });
+    }
+    const role = req.session?.role || 'admin';
+    const displayName = req.session?.displayName || req.session?.username || 'Usuario';
+    const result = await pool.query(
+      'INSERT INTO chat_messages(sender_username, sender_name, sender_role, message) VALUES($1,$2,$3,$4) RETURNING id, sender_username AS "senderUsername", sender_name AS "senderName", sender_role AS "senderRole", message, created_at AS "createdAt"',
+      [req.session?.username || 'admin', displayName, role, message]
+    );
+    res.status(201).json(result.rows[0]);
   } catch (error) {
     next(error);
   }
