@@ -111,8 +111,9 @@ function showApp() {
   if (adminNav) adminNav.style.display = APP.currentRole === 'admin' ? 'flex' : 'none';
   ['cobros', 'balance'].forEach(function (module) {
     const item = document.querySelector('.nav-item[data-module="' + module + '"]');
+    // Cobros debe permanecer visible en el menú; el acceso sigue protegido por NIP.
     const canSee = module === 'cobros'
-      ? ['admin', 'empleado'].includes(APP.currentRole)
+      ? true
       : APP.currentRole === 'admin';
     if (item) item.style.display = canSee ? 'flex' : 'none';
   });
