@@ -185,6 +185,7 @@ function validFinanceToken(req, scope) {
 }
 
 
+
 function requireFinanceWrite(req, res, next) {
   if (
     !validFinanceToken(req, 'cobros') &&
@@ -196,8 +197,6 @@ function requireFinanceWrite(req, res, next) {
   }
 
   next();
-}
-
 }
 
 function requireFinanceRead(req, res, next) {
@@ -220,18 +219,6 @@ function validStore(store) {
 function recordKey(store, data) {
   return store === 'config' ? String(data.key) : String(data.id);
 }
-
-app.get('/api/health', async (_req, res) => {
-  try {
-    await pool.query('SELECT 1');
-    res.json({ ok: true, database: 'connected' });
-  } catch {
-    res.status(503).json({
-      ok: false,
-      database: 'unavailable'
-    });
-  }
-});
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
