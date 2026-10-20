@@ -87,9 +87,9 @@ async function registrarCobroConsulta(consultaId, monto) {
   });
 }
 
-async function getCobrosHoy(fecha) {
+async function getCobrosHoy(fecha, offsetMinutos = new Date().getTimezoneOffset()) {
   return api(
-    `/api/dashboard/cobros-hoy?fecha=${encodeURIComponent(fecha)}`
+    `/api/dashboard/cobros-hoy?fecha=${encodeURIComponent(fecha)}&offsetMinutos=${encodeURIComponent(offsetMinutos)}`
   );
 }
 
