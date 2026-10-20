@@ -523,7 +523,7 @@ app.get('/api/dashboard/cobros-hoy', requireAuth, requireAdmin, async (req, res,
     const fecha = String(req.query.fecha || '');
     const offsetMinutos = Number(req.query.offsetMinutos);
 
-    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(fecha) ||
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) ||
         !Number.isInteger(offsetMinutos) || offsetMinutos < -840 || offsetMinutos > 840) {
       return res.status(400).json({ error: 'Fecha o zona horaria inválida.' });
     }
