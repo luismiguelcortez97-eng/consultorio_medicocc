@@ -122,7 +122,30 @@ async function get(storeName, id) {
 }
 
 async function getAll(storeName) {
+  if (storeName === 'chat') return api('/api/chat');
+  if (storeName === 'personal') return api('/api/staff-users');
   return api(`/api/data/${encodeURIComponent(storeName)}`);
+}
+
+async function sendChat(message) {
+  return api('/api/chat', {
+    method: 'POST',
+    body: JSON.stringify({ message })
+  });
+}
+
+async function addStaffUser(data) {
+  return api('/api/staff-users', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+}
+
+async function setStaffActive(id, active) {
+  return api(`/api/staff-users/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ active })
+  });
 }
 
 async function remove(storeName, id) {
@@ -230,6 +253,9 @@ window.DB = {
   put,
   get,
   getAll,
+  sendChat,
+  addStaffUser,
+  setStaffActive,
   remove,
   clearStore,
   getConfig,
