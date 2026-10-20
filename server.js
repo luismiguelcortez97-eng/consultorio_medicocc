@@ -229,7 +229,7 @@ function requireFinanceWrite(req, res, next) {
 
 function requireFinanceRead(req, res, next) {
   const role = req.session?.role;
-  if (['admin', 'empleado', 'enfermeria'].includes(role)) return next();
+  if (['admin', 'empleado', 'enfermeria', 'medico'].includes(role)) return next();
   return res.status(403).json({ error: 'No tienes permisos para consultar cobros.' });
 }
 
@@ -663,16 +663,19 @@ app.post('/api/consultas/:id/registrar-cobro', requireAuth, async (req, res, nex
 
 app.post('/api/cobros/:id/confirmar', requireAuth, async (req, res, next) => {
   const role = req.session?.role;
-  if (!['admin', 'empleado'].includes(role)) {
-    return res.status(403).json({ error: 'Solo recepción o administración puede confirmar el cobro.' });
+  if (!['admin', 'empleado', 'enfermeria', 'medico'].includes(role)) {
+    return res.status(403).json({ error: 'No tienes permisos para confirmar cobros.' });
   }
-  // El acceso a Cobros ya no requiere NIP; se conserva la validación de rol.
 
   const id = Number(req.params.id);
   const metodoPago = req.body?.metodoPago;
-  if (!Number.isSafeInteger(id) || id < 1 || !['Efectivo', 'Tarjeta', 'Transferencia'].includes(metodoPago)) {
-    return res.status(400).json({ error: 'Cobro o método de pago inválido.' });
+  const montoSolicitado = Number(req.body?.monto);
+  if (!Number.isSafeInteger(id) || id < 1 ||
+      !['Efectivo', 'Tarjeta', 'Transferencia'].includes(metodoPago) ||
+      !Number.isFinite(montoSolicitado) || montoSolicitado <= 0 || montoSolicitado > 10000000) {
+    return res.status(400).json({ error: 'Cobro, importe o método de pago inválido.' });
   }
+  const montoFinal = Math.round(montoSolicitado * 100) / 100;
 
   const client = await pool.connect();
   try {
@@ -692,13 +695,22 @@ app.post('/api/cobros/:id/confirmar', requireAuth, async (req, res, next) => {
     }
 
     const now = new Date().toISOString();
-    const user = req.session?.displayName || req.session?.username || 'Recepción';
+    const user = req.session?.displayName || req.session?.username || 'Personal';
+    const montoAnterior = Number(cobro.monto) || 0;
+    cobro.monto = montoFinal;
     cobro.status = 'pagado';
     cobro.metodoPago = metodoPago;
     cobro.cobradoPor = user;
     cobro.cobradoAt = now;
     cobro.audit = Array.isArray(cobro.audit) ? cobro.audit : [];
-    cobro.audit.push({ fecha: now, accion: 'marcado_pagado', metodoPago, usuario: user });
+    cobro.audit.push({
+      fecha: now,
+      accion: 'marcado_pagado',
+      metodoPago,
+      usuario: user,
+      montoAnterior,
+      montoFinal
+    });
 
     await client.query(
       "UPDATE app_records SET data=$2, updated_at=NOW() WHERE store='cobros' AND record_key=$1",
