@@ -2487,6 +2487,90 @@ async function imprimirRecetaIndependiente(id) {
   window.print();
 }
 
+// ========== EMPLEADOS ==========
+async function renderEmpleados() {
+  const empleados = await DB.getAll(DB.STORES.empleados);
+  const area = document.getElementById('content-area');
+  area.innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <div><h3>Directorio de empleados</h3><p class="text-muted">Administra los datos del personal de recepción, administración y apoyo.</p></div>
+        <button class="btn btn-primary btn-sm" onclick="openEmpleadoModal()">+ Nuevo empleado</button>
+      </div>
+      <div class="card-body">
+        ${empleados.length ? `<div class="table-responsive"><table>
+          <thead><tr><th>Nombre</th><th>Puesto</th><th>Teléfono</th><th>Correo</th><th>Estado</th><th>Acciones</th></tr></thead>
+          <tbody>${empleados.map(function(e) {
+            return `<tr>
+              <td><strong>${featureEscape(e.nombre || '')}</strong></td>
+              <td>${featureEscape(e.puesto || '—')}</td>
+              <td>${featureEscape(e.telefono || '—')}</td>
+              <td>${featureEscape(e.correo || '—')}</td>
+              <td>${e.activo === false ? '<span class="badge badge-secondary">Inactivo</span>' : '<span class="badge badge-success">Activo</span>'}</td>
+              <td><button class="btn btn-outline btn-sm" onclick="openEmpleadoModal(${Number(e.id)})">Editar</button>
+              <button class="btn btn-danger btn-sm" onclick="eliminarEmpleado(${Number(e.id)})">Eliminar</button></td>
+            </tr>`;
+          }).join('')}</tbody></table></div>` : '<div class="empty-state"><div class="icon">👥</div><p>No hay empleados registrados todavía.</p><p>Selecciona “Nuevo empleado” para agregar el primero.</p></div>'}
+      </div>
+    </div>`;
+}
+
+async function openEmpleadoModal(id = null) {
+  APP.editingId = id;
+  const modal = document.getElementById('generic-modal');
+  document.getElementById('modal-title').textContent = id ? 'Editar empleado' : 'Nuevo empleado';
+  let e = { nombre: '', puesto: '', telefono: '', correo: '', notas: '', activo: true };
+  if (id) e = await DB.get(DB.STORES.empleados, id) || e;
+  document.getElementById('modal-body').innerHTML = `
+    <div class="form-row">
+      <div class="form-group"><label>Nombre completo *</label><input class="form-control" id="emp-nombre" maxlength="120" value="${escapeAttr(e.nombre || '')}" required></div>
+      <div class="form-group"><label>Puesto</label><input class="form-control" id="emp-puesto" maxlength="100" value="${escapeAttr(e.puesto || '')}" placeholder="Recepción, asistente, limpieza…"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Teléfono</label><input class="form-control" id="emp-telefono" maxlength="40" value="${escapeAttr(e.telefono || '')}"></div>
+      <div class="form-group"><label>Correo electrónico</label><input class="form-control" id="emp-correo" type="email" maxlength="150" value="${escapeAttr(e.correo || '')}"></div>
+    </div>
+    <div class="form-group"><label>Notas</label><textarea class="form-control" id="emp-notas" rows="3" maxlength="1000">${featureEscape(e.notas || '')}</textarea></div>
+    <div class="form-group"><label><input type="checkbox" id="emp-activo" ${e.activo === false ? '' : 'checked'}> Empleado activo</label></div>`;
+  document.getElementById('modal-footer').innerHTML = '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="guardarEmpleado()">Guardar empleado</button>';
+  modal.classList.add('show');
+}
+
+async function guardarEmpleado() {
+  const nombre = document.getElementById('emp-nombre').value.trim();
+  if (!nombre) return alert('El nombre del empleado es obligatorio.');
+  const data = {
+    nombre,
+    puesto: document.getElementById('emp-puesto').value.trim(),
+    telefono: document.getElementById('emp-telefono').value.trim(),
+    correo: document.getElementById('emp-correo').value.trim(),
+    notas: document.getElementById('emp-notas').value.trim(),
+    activo: document.getElementById('emp-activo').checked
+  };
+  try {
+    if (APP.editingId) {
+      data.id = APP.editingId;
+      await DB.put(DB.STORES.empleados, data);
+    } else {
+      await DB.add(DB.STORES.empleados, data);
+    }
+    closeModal();
+    await renderEmpleados();
+  } catch (error) {
+    alert('No se pudo guardar el empleado: ' + error.message);
+  }
+}
+
+async function eliminarEmpleado(id) {
+  if (!confirm('¿Eliminar este registro de empleado? Esta acción no elimina las cuentas de acceso del módulo “Accesos del personal”.')) return;
+  try {
+    await DB.remove(DB.STORES.empleados, id);
+    await renderEmpleados();
+  } catch (error) {
+    alert('No se pudo eliminar el registro: ' + error.message);
+  }
+}
+
 // ========== CUENTAS DEL PERSONAL ==========
 async function renderPersonal() {
   if (APP.currentRole !== 'admin') return alert('Solo un administrador puede gestionar accesos.');
