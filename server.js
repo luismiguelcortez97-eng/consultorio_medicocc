@@ -797,10 +797,11 @@ app.get(
 app.post(
   '/api/data/:store',
   requireAuth,
-  (req, res, next) =>
-    req.params.store === 'cobros'
-      ? requireFinanceWrite(req, res, next)
-      : next(),
+  (req, res, next) => {
+    if (req.params.store === 'cobros') return requireFinanceWrite(req, res, next);
+    if (req.params.store === 'empleados') return requireAdmin(req, res, next);
+    return next();
+  },
   async (req, res, next) => {
     const client = await pool.connect();
 
@@ -891,10 +892,11 @@ app.post(
 app.put(
   '/api/data/:store/:id',
   requireAuth,
-  (req, res, next) =>
-    req.params.store === 'cobros'
-      ? requireFinanceWrite(req, res, next)
-      : next(),
+  (req, res, next) => {
+    if (req.params.store === 'cobros') return requireFinanceWrite(req, res, next);
+    if (req.params.store === 'empleados') return requireAdmin(req, res, next);
+    return next();
+  },
   async (req, res, next) => {
     try {
       const { store, id } = req.params;
@@ -950,10 +952,11 @@ app.put(
 app.delete(
   '/api/data/:store/:id',
   requireAuth,
-  (req, res, next) =>
-    req.params.store === 'cobros'
-      ? requireFinanceWrite(req, res, next)
-      : next(),
+  (req, res, next) => {
+    if (req.params.store === 'cobros') return requireFinanceWrite(req, res, next);
+    if (req.params.store === 'empleados') return requireAdmin(req, res, next);
+    return next();
+  },
   async (req, res, next) => {
     try {
       const { store, id } = req.params;
@@ -979,10 +982,11 @@ app.delete(
 app.delete(
   '/api/data/:store',
   requireAuth,
-  (req, res, next) =>
-    req.params.store === 'cobros'
-      ? requireFinanceWrite(req, res, next)
-      : next(),
+  (req, res, next) => {
+    if (req.params.store === 'cobros') return requireFinanceWrite(req, res, next);
+    if (req.params.store === 'empleados') return requireAdmin(req, res, next);
+    return next();
+  },
   async (req, res, next) => {
     try {
       const { store } = req.params;
