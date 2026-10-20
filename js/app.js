@@ -114,13 +114,22 @@ function showApp() {
   if (adminNav) adminNav.style.display = APP.currentRole === 'admin' ? 'flex' : 'none';
   ['cobros', 'balance'].forEach(function (module) {
     const item = document.querySelector('.nav-item[data-module="' + module + '"]');
-    // Cobros debe permanecer visible en el menú; el acceso sigue protegido por NIP.
-    const canSee = module === 'cobros'
-      ? true
-      : APP.currentRole === 'admin';
+    const canSee = module === 'cobros' ? ['admin', 'empleado'].includes(APP.currentRole) : APP.currentRole === 'admin';
     if (item) item.style.display = canSee ? 'flex' : 'none';
   });
   navigateTo('dashboard');
+  if (APP.chatWatchTimer) clearInterval(APP.chatWatchTimer);
+  APP.chatWatchTimer = setInterval(async function () {
+    if (!APP.currentUser) return;
+    try {
+      const messages = await DB.getAll('chat');
+      const maxId = messages.reduce(function (max, m) { return Math.max(max, Number(m.id) || 0); }, 0);
+      const key = 'cmcc_chat_last_seen_' + APP.currentUser;
+      const lastSeen = Number(localStorage.getItem(key) || 0);
+      const dot = document.getElementById('chat-unread-dot');
+      if (dot) dot.hidden = APP.currentModule === 'chat' || maxId <= lastSeen;
+    } catch (e) { console.debug('No se pudo revisar chat', e); }
+  }, 10000);
 }
 
 // ========== NAVIGATION ==========
@@ -134,10 +143,6 @@ async function navigateTo(module) {
     return;
   }
   // Check NIP for protected modules
-  if (module === 'cobros' && !APP.unlockedCobros) {
-    showNipModal('cobros');
-    return;
-  }
   if (module === 'balance' && !APP.unlockedBalance) {
     showNipModal('balance');
     return;
@@ -2498,6 +2503,16 @@ async function actualizarChat() {
   if (APP.currentModule !== 'chat') return;
   try {
     const messages = await DB.getAll('chat');
+    const maxId = messages.reduce(function (max, m) { return Math.max(max, Number(m.id) || 0); }, 0);
+    const dot = document.getElementById('chat-unread-dot');
+    const lastSeenKey = 'cmcc_chat_last_seen_' + APP.currentUser;
+    const storedSeen = Number(localStorage.getItem(lastSeenKey) || 0);
+    if (APP.currentModule === 'chat') {
+      localStorage.setItem(lastSeenKey, String(maxId));
+      if (dot) dot.hidden = true;
+    } else if (dot) {
+      dot.hidden = maxId <= storedSeen;
+    }
     const box = document.getElementById('chat-messages');
     if (!box) return;
     const wasNearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 90;
@@ -2531,16 +2546,32 @@ async function enviarMensajeChat(event) {
   } finally { button.disabled = false; input.focus(); }
 }
 
+function calcularEdad(fechaNacimiento) {
+  if (!fechaNacimiento) return null;
+  const nacimiento = new Date(String(fechaNacimiento).slice(0, 10) + 'T00:00:00');
+  if (Number.isNaN(nacimiento.getTime())) return null;
+  const hoy = new Date();
+  let edad = hoy.getFullYear() - nacimiento.getFullYear();
+  const diferenciaMes = hoy.getMonth() - nacimiento.getMonth();
+  if (diferenciaMes < 0 || (diferenciaMes === 0 && hoy.getDate() < nacimiento.getDate())) edad--;
+  return edad >= 0 ? edad : null;
+}
+
 // ========== RECETA INDEPENDIENTE ==========
 async function renderRecetas() {
   const area = document.getElementById('content-area');
   const plantillas = await DB.getAll('plantillas_receta');
   const recetas = (await DB.getAll('recetas')).sort(function (a,b) { return String(b.fecha || '').localeCompare(String(a.fecha || '')); });
   const medicos = await DB.getAll(DB.STORES.medicos);
+  const pacientes = await DB.getAll(DB.STORES.pacientes);
+  const medicamentos = await DB.getAll(DB.STORES.medicamentos);
   area.innerHTML = '<div class="card"><div class="card-header"><div><h3>Receta independiente</h3><p class="text-muted">Crea recetas sin necesidad de abrir una consulta.</p></div>' +
     '<button class="btn btn-outline" onclick="openPlantillaRecetaModal()">+ Crear plantilla</button></div><div class="card-body">' +
     '<div class="recipe-banner"><strong>Plantillas por médico</strong><span>Personaliza encabezado, datos profesionales, firma y pie de página. Elige la plantilla al preparar cada receta.</span></div>' +
-    '<div class="form-row"><div class="form-group"><label>Paciente *</label><input class="form-control" id="rec-paciente" placeholder="Nombre completo del paciente" required></div>' +
+    '<div class="form-row"><div class="form-group"><label>Paciente *</label><input class="form-control" id="rec-paciente" list="rec-pacientes-list" placeholder="Escribe para buscar paciente" required><datalist id="rec-pacientes-list">' +
+    pacientes.map(function (p) { return '<option value="' + featureEscape(p.nombre || '') + '"></option>'; }).join('') + '</datalist></div>' +
+    '<div class="form-group"><label>Fecha de nacimiento</label><input class="form-control" id="rec-fecha-nac" readonly placeholder="Se completa desde el expediente"></div>' +
+    '<div class="form-group"><label>Edad</label><input class="form-control" id="rec-edad" readonly placeholder="—"></div>' +
     '<div class="form-group"><label>Fecha *</label><input class="form-control" id="rec-fecha" type="date" value="' + localDateString(new Date()) + '" required></div></div>' +
     '<div class="form-row"><div class="form-group"><label>Médico *</label><select class="form-control" id="rec-medico"><option value="">Selecciona médico</option>' +
     medicos.filter(function (m) { return m.activo !== false; }).map(function (m) { return '<option value="' + m.id + '">' + featureEscape(m.nombre) + ' — ' + featureEscape(m.especialidad || '') + '</option>'; }).join('') +
@@ -2548,7 +2579,8 @@ async function renderRecetas() {
     plantillas.map(function (p) { return '<option value="' + p.id + '">' + featureEscape(p.nombre) + '</option>'; }).join('') +
     '</select></div></div>' +
     '<div class="form-group"><label>Diagnóstico / motivo</label><textarea class="form-control" id="rec-diagnostico" rows="2"></textarea></div>' +
-    '<div class="form-group"><label>Medicamento, presentación y concentración *</label><textarea class="form-control" id="rec-medicamento" rows="2" placeholder="Nombre y presentación" required></textarea></div>' +
+    '<div class="form-group"><label>Buscar medicamento en el catálogo</label><input class="form-control" id="rec-med-search" placeholder="Escribe el nombre del medicamento para buscar..." autocomplete="off"><div id="rec-med-results" class="recipe-med-results"></div></div>' +
+    '<div class="form-group"><label>Medicamento(s) seleccionado(s) *</label><textarea class="form-control" id="rec-medicamento" rows="3" placeholder="Selecciona uno o varios medicamentos arriba" required></textarea></div>' +
     '<div class="form-row"><div class="form-group"><label>Dosis y vía de administración</label><input class="form-control" id="rec-dosis" placeholder="Dosis y vía"></div>' +
     '<div class="form-group"><label>Frecuencia</label><input class="form-control" id="rec-frecuencia" placeholder="Cada cuánto"></div></div>' +
     '<div class="form-row"><div class="form-group"><label>Duración</label><input class="form-control" id="rec-duracion" placeholder="Duración indicada"></div>' +
@@ -2563,6 +2595,40 @@ async function renderRecetas() {
         return '<tr><td>' + featureEscape(r.fecha) + '</td><td>' + featureEscape(r.paciente) + '</td><td>' + featureEscape(m ? m.nombre : '—') +
           '</td><td>' + featureEscape(p ? p.nombre : 'Plantilla eliminada') + '</td><td><button class="btn btn-primary btn-sm" onclick="imprimirRecetaIndependiente(' + Number(r.id) + ')">Vista previa / imprimir</button></td></tr>';
       }).join('') + '</tbody></table></div>' : '<div class="empty-state"><p>Aún no hay recetas guardadas.</p></div>') + '</div></div>';
+
+  const pacienteInput = document.getElementById('rec-paciente');
+  pacienteInput.addEventListener('input', function () {
+    const elegido = pacientes.find(function (p) { return String(p.nombre || '').trim().toLocaleLowerCase('es-MX') === pacienteInput.value.trim().toLocaleLowerCase('es-MX'); });
+    const fechaNac = elegido ? (elegido.fechaNac || elegido.fechaNacimiento || '') : '';
+    document.getElementById('rec-fecha-nac').value = fechaNac;
+    const edad = fechaNac ? calcularEdad(fechaNac) : null;
+    document.getElementById('rec-edad').value = edad == null ? '' : edad + ' años';
+  });
+  const medSearch = document.getElementById('rec-med-search');
+  medSearch.addEventListener('input', function () {
+    const q = medSearch.value.trim().toLocaleLowerCase('es-MX');
+    const results = document.getElementById('rec-med-results');
+    if (!q) { results.innerHTML = ''; return; }
+    const matches = medicamentos.filter(function (m) {
+      return [m.nombre, m.presentacion, m.concentracion].join(' ').toLocaleLowerCase('es-MX').includes(q);
+    }).slice(0, 12);
+    results.innerHTML = matches.length ? matches.map(function (m) {
+      return '<button type="button" class="recipe-med-result" data-med-id="' + Number(m.id) + '">' +
+        featureEscape(m.nombre || '') + ' — ' + featureEscape(m.presentacion || '') + ' ' + featureEscape(m.concentracion || '') + '</button>';
+    }).join('') : '<p class="text-muted" style="padding:.5rem">No se encontraron medicamentos.</p>';
+    results.querySelectorAll('[data-med-id]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        const med = medicamentos.find(function (m) { return String(m.id) === button.dataset.medId; });
+        if (!med) return;
+        const field = document.getElementById('rec-medicamento');
+        const line = [med.nombre, med.presentacion, med.concentracion].filter(Boolean).join(' — ');
+        field.value = field.value.trim() ? field.value.trim() + '\n' + line : line;
+        medSearch.value = '';
+        results.innerHTML = '';
+        medSearch.focus();
+      });
+    });
+  });
 }
 
 async function openPlantillaRecetaModal(id) {
@@ -2616,8 +2682,12 @@ async function guardarRecetaIndependiente() {
   if (!paciente || !fecha || !medicoId || !plantillaId || !medicamento) {
     return alert('Completa paciente, fecha, médico, plantilla y medicamento.');
   }
+  const pacientes = await DB.getAll(DB.STORES.pacientes);
+  const pacienteEncontrado = pacientes.find(function (p) { return String(p.nombre || '').trim().toLocaleLowerCase('es-MX') === paciente.toLocaleLowerCase('es-MX'); });
+  const fechaNac = pacienteEncontrado ? (pacienteEncontrado.fechaNac || pacienteEncontrado.fechaNacimiento || '') : '';
+  const edadPaciente = fechaNac ? calcularEdad(fechaNac) : null;
   const data = {
-    paciente: paciente, fecha: fecha, medicoId: Number(medicoId), plantillaId: Number(plantillaId),
+    paciente: paciente, fechaNacimiento: fechaNac, edad: edadPaciente, fecha: fecha, medicoId: Number(medicoId), plantillaId: Number(plantillaId),
     diagnostico: document.getElementById('rec-diagnostico').value.trim(),
     medicamento: medicamento, dosis: document.getElementById('rec-dosis').value.trim(),
     frecuencia: document.getElementById('rec-frecuencia').value.trim(),
@@ -2653,6 +2723,7 @@ async function imprimirRecetaIndependiente(id) {
     '<p style="margin:4px 0">' + featureEscape(p.domicilio || '') + ' ' + featureEscape(p.telefono || '') + '</p></header>' +
     '<div style="display:flex;justify-content:space-between;gap:20px;margin-bottom:18px"><h3 style="margin:0">RECETA MÉDICA</h3><span>Fecha: ' + featureEscape(r.fecha) + '</span></div>' +
     '<p style="font-size:17px;border-bottom:1px solid #cbd5e1;padding-bottom:12px"><strong>Paciente:</strong> ' + featureEscape(r.paciente) + '</p>' +
+    '<p><strong>Fecha de nacimiento:</strong> ' + featureEscape(r.fechaNacimiento || 'No registrada') + ' &nbsp; <strong>Edad:</strong> ' + featureEscape(r.edad != null ? String(r.edad) + ' años' : 'No disponible') + '</p>' +
     field('Diagnóstico / motivo', r.diagnostico) + '<div style="border:1px solid #cbd5e1;border-radius:8px;padding:18px;margin:22px 0;min-height:130px">' +
     '<h3 style="margin:0 0 14px">Rp.</h3><p style="font-size:17px;margin:0 0 10px"><strong>' + featureEscape(r.medicamento) + '</strong></p>' +
     field('Dosis y vía', r.dosis) + field('Frecuencia', r.frecuencia) + field('Duración', r.duracion) + field('Cantidad', r.cantidad) + '</div>' +
