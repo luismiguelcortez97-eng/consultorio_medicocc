@@ -796,10 +796,12 @@ function openConsultaModal() {
       <div id="meds-list"></div>
       <div class="form-row" style="align-items:end;">
         <div class="form-group">
-          <label>Medicamento</label>
-          <select class="form-control" id="add-med-id">
+          <label>Buscar medicamento</label>
+          <input type="text" class="form-control" id="add-med-search" placeholder="Escribe para buscar medicamento..." autocomplete="off">
+          <div id="add-med-results" class="recipe-med-results"></div>
+          <select class="form-control" id="add-med-id" style="display:none">
             <option value="">— Seleccione —</option>
-            ${meds.map(m => `<option value="${m.id}">${escapeHtml(m.nombre)} ${m.concentracion || ''}</option>`).join('')}
+            ${meds.map(m => `<option value="${m.id}">${escapeHtml(m.nombre)} ${m.presentacion || ''} ${m.concentracion || ''}</option>`).join('')}
           </select>
         </div>
         <div class="form-group">
@@ -851,6 +853,19 @@ function openConsultaModal() {
 
     document.getElementById('c-pacienteId').addEventListener('change', event => {
       cargarSignosVitalesEnfermeria(event.target.value);
+    });
+    const medSearchInput = document.getElementById('add-med-search');
+    medSearchInput.addEventListener('input', function () {
+      const q = medSearchInput.value.trim().toLocaleLowerCase('es-MX');
+      const results = document.getElementById('add-med-results');
+      const matches = q ? meds.filter(m => [m.nombre, m.presentacion, m.concentracion].join(' ').toLocaleLowerCase('es-MX').includes(q)).slice(0, 12) : [];
+      results.innerHTML = matches.map(m => '<button type="button" class="recipe-med-result" data-med-id="' + Number(m.id) + '">' +
+        escapeHtml(m.nombre || '') + ' — ' + escapeHtml(m.presentacion || '') + ' ' + escapeHtml(m.concentracion || '') + '</button>').join('');
+      results.querySelectorAll('[data-med-id]').forEach(button => button.addEventListener('click', function () {
+        document.getElementById('add-med-id').value = button.dataset.medId;
+        medSearchInput.value = button.textContent;
+        results.innerHTML = '';
+      }));
     });
 
     renderTempMeds();
