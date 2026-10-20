@@ -73,10 +73,10 @@ async function verifyNip(tipo, nip) {
   });
 }
 
-async function confirmarCobro(id, metodoPago) {
+async function confirmarCobro(id, metodoPago, monto) {
   return api(`/api/cobros/${encodeURIComponent(id)}/confirmar`, {
     method: 'POST',
-    body: JSON.stringify({ metodoPago })
+    body: JSON.stringify({ metodoPago, monto })
   });
 }
 
