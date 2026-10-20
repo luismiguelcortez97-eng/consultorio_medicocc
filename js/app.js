@@ -242,7 +242,7 @@ async function verifyNip() {
 async function renderDashboard() {
   const medicos = await DB.getAll(DB.STORES.medicos);
   const pacientes = await DB.getAll(DB.STORES.pacientes);
-  const consultas = await DB.getAll(DB.STORES.consultas);
+  const consultas = (await DB.getAll(DB.STORES.consultas)).filter(c => !c.eliminada);
   const hoy = new Date().toISOString().slice(0, 10);
   const resumenCobros = APP.currentRole === 'admin' ? await DB.getCobrosHoy(hoy) : { total: 0 };
   const totalHoy = Number(resumenCobros.total) || 0;
@@ -646,6 +646,7 @@ async function renderConsultas() {
                       <button class="btn btn-outline btn-sm" onclick="verConsulta(${c.id})">Ver</button>
                       <button class="btn btn-primary btn-sm" onclick="imprimirReceta(${c.id})">Receta</button>
                       <button class="btn btn-success btn-sm" onclick="registrarCobroConsulta(${c.id})">${c.cobroId ? 'Ver cobro registrado' : 'Registrar cobros'}</button>
+                      <button class="btn btn-danger btn-sm" onclick="eliminarConsulta(${c.id})">Eliminar</button>
                     </td>
                   </tr>`;
                 }))).join('')}
@@ -656,6 +657,32 @@ async function renderConsultas() {
     </div>
   `;
 }
+
+async function eliminarConsulta(id) {
+  try {
+    const consulta = await DB.get(DB.STORES.consultas, id);
+    if (!consulta || consulta.eliminada) {
+      alert('La consulta ya no está disponible.');
+      return;
+    }
+
+    const mensaje = consulta.cobroId
+      ? 'Esta consulta está vinculada a un cobro. Se retirará de la lista, pero se conservará el historial clínico y financiero. ¿Deseas continuar?'
+      : '¿Deseas retirar esta consulta de la lista? Se conservará el registro clínico en el sistema.';
+
+    if (!confirm(mensaje)) return;
+
+    consulta.eliminada = true;
+    consulta.eliminadaAt = new Date().toISOString();
+    consulta.eliminadaPor = APP.currentUser || 'Usuario autorizado';
+    await DB.put(DB.STORES.consultas, consulta);
+    await renderConsultas();
+    alert('Consulta retirada del listado. El historial se conservó.');
+  } catch (error) {
+    alert('No se pudo retirar la consulta: ' + error.message);
+  }
+}
+
 
 function openConsultaModal() {
   APP.editingId = null;
@@ -722,7 +749,8 @@ function openConsultaModal() {
         <textarea class="form-control" id="c-tratamiento" rows="2"></textarea>
       </div>
 
-      <h4 style="margin:1.25rem 0 0.75rem; font-size:1rem;">Signos vitales (obligatorios antes de finalizar)</h4>
+      <h4 style="margin:1.25rem 0 0.75rem; font-size:1rem;">Signos vitales</h4>
+      <p id="sv-enfermeria-aviso" class="text-muted" role="status">Seleccione un paciente para cargar los signos vitales más recientes de enfermería.</p>
       <div class="form-row">
         <div class="form-group">
           <label>T.A. (mmHg)</label>
@@ -810,6 +838,10 @@ function openConsultaModal() {
       <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn btn-primary" onclick="saveConsulta()">Guardar Consulta</button>
     `;
+
+    document.getElementById('c-pacienteId').addEventListener('change', event => {
+      cargarSignosVitalesEnfermeria(event.target.value);
+    });
 
     renderTempMeds();
     renderTempEsts();
@@ -899,6 +931,73 @@ async function renderTempEsts() {
       </li>`;
     }).join('')}
   </ul>`;
+}
+
+async function cargarSignosVitalesEnfermeria(pacienteId) {
+  const aviso = document.getElementById('sv-enfermeria-aviso');
+  const campos = {
+    ta: 'sv-ta',
+    fc: 'sv-fc',
+    fr: 'sv-fr',
+    temp: 'sv-temp',
+    peso: 'sv-peso',
+    talla: 'sv-talla',
+    spo2: 'sv-spo2'
+  };
+
+  if (!pacienteId) {
+    Object.values(campos).forEach(id => {
+      const campo = document.getElementById(id);
+      if (campo) campo.value = '';
+    });
+    if (aviso) aviso.textContent = 'Seleccione un paciente para cargar los signos vitales más recientes de enfermería.';
+    return;
+  }
+
+  try {
+    const [paciente, registros] = await Promise.all([
+      DB.get(DB.STORES.pacientes, Number(pacienteId)),
+      DB.getAll(DB.STORES.enfermeria)
+    ]);
+    const normalizar = valor => String(valor || '').trim().toLocaleLowerCase('es-MX');
+    const delPaciente = registros.filter(r =>
+      (r.pacienteId != null && String(r.pacienteId) === String(pacienteId)) ||
+      (r.pacienteId == null && paciente && normalizar(r.paciente) === normalizar(paciente.nombre))
+    );
+    delPaciente.sort((a, b) => String(b.fechaHora || '').localeCompare(String(a.fechaHora || '')));
+    const registro = delPaciente[0];
+
+    if (!registro) {
+      Object.values(campos).forEach(id => {
+        const campo = document.getElementById(id);
+        if (campo) campo.value = '';
+      });
+      if (aviso) aviso.textContent = 'No hay signos vitales de enfermería para este paciente. Puede capturarlos aquí.';
+      return;
+    }
+
+    const valores = {
+      ta: registro.presion || '',
+      fc: registro.fc ?? '',
+      fr: registro.fr ?? '',
+      temp: registro.temperatura ?? '',
+      peso: registro.peso ?? '',
+      talla: registro.talla ?? '',
+      spo2: registro.spo2 ?? ''
+    };
+    Object.entries(campos).forEach(([clave, id]) => {
+      const campo = document.getElementById(id);
+      if (campo) campo.value = valores[clave] ?? '';
+    });
+
+    const fecha = registro.fechaHora
+      ? new Date(registro.fechaHora).toLocaleString('es-MX')
+      : 'fecha no disponible';
+    if (aviso) aviso.textContent = 'Signos vitales cargados automáticamente desde enfermería (' + fecha + '). Verifique que correspondan a esta consulta.';
+  } catch (error) {
+    console.error('No se pudieron cargar los signos vitales:', error);
+    if (aviso) aviso.textContent = 'No se pudieron cargar los signos vitales de enfermería. Puede capturarlos manualmente.';
+  }
 }
 
 async function saveConsulta() {
@@ -2009,7 +2108,10 @@ async function renderEnfermeria() {
   }
 
   try {
-    const registros = await DB.getAll('enfermeria');
+    const [registros, pacientes] = await Promise.all([
+      DB.getAll('enfermeria'),
+      DB.getAll(DB.STORES.pacientes)
+    ]);
 
     registros.sort((a, b) =>
       String(b.fechaHora || '').localeCompare(String(a.fechaHora || ''))
@@ -2022,8 +2124,11 @@ async function renderEnfermeria() {
         <form id="form-enfermeria">
           <div class="form-grid">
             <div class="form-group">
-              <label>Nombre del paciente</label>
-              <input class="form-control" name="paciente" required>
+              <label>Paciente registrado</label>
+              <select class="form-control" name="pacienteId" required>
+                <option value="">— Seleccione al paciente —</option>
+                ${pacientes.map(p => `<option value="${p.id}">${escapeHtml(p.nombre)}</option>`).join('')}
+              </select>
             </div>
 
             <div class="form-group">
@@ -2188,7 +2293,8 @@ async function guardarEnfermeria(event) {
   }
 
   const registro = {
-    paciente: String(datos.get('paciente') || '').trim(),
+    pacienteId: Number(datos.get('pacienteId')),
+    paciente: String(form.elements.pacienteId.selectedOptions[0]?.textContent || '').trim(),
     responsable: String(datos.get('responsable') || '').trim(),
     presion: String(datos.get('presion') || '').trim(),
     fc: Number(datos.get('fc')),
