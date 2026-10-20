@@ -362,7 +362,7 @@ function openMedicoModal(id = null) {
   title.textContent = id ? 'Editar Médico' : 'Nuevo Médico';
 
   const load = async () => {
-    let m = { nombre: '', especialidad: '', cedula: '', cedulaEsp: '', domicilio: '', telefono: '', activo: true };
+    let m = { nombre: '', especialidad: '', cedula: '', cedulaEsp: '', domicilio: '', telefono: '', honorarios: '', activo: true };
     if (id) m = await DB.get(DB.STORES.medicos, id) || m;
 
     body.innerHTML = `
@@ -394,6 +394,11 @@ function openMedicoModal(id = null) {
         <label>Teléfono</label>
         <input type="text" class="form-control" id="m-telefono" value="${escapeAttr(m.telefono || '')}">
       </div>
+      <div class="form-group">
+        <label>Honorarios habituales por consulta (MXN)</label>
+        <input type="number" min="0" step="0.01" class="form-control" id="m-honorarios" value="${m.honorarios == null ? '' : escapeAttr(m.honorarios)}" placeholder="Ej. 800">
+        <small class="text-muted">Este importe se sugerirá al registrar el cobro. Puede cambiarse en cada consulta.</small>
+      </div>
     `;
 
     footer.innerHTML = `
@@ -420,6 +425,7 @@ async function saveMedico() {
     cedulaEsp: document.getElementById('m-cedulaEsp').value.trim(),
     domicilio: document.getElementById('m-domicilio').value.trim(),
     telefono: document.getElementById('m-telefono').value.trim(),
+    honorarios: document.getElementById('m-honorarios').value.trim() === '' ? null : Number(document.getElementById('m-honorarios').value),
     activo: true
   };
 
@@ -636,6 +642,7 @@ async function renderConsultas() {
                     <td>
                       <button class="btn btn-outline btn-sm" onclick="verConsulta(${c.id})">Ver</button>
                       <button class="btn btn-primary btn-sm" onclick="imprimirReceta(${c.id})">Receta</button>
+                      <button class="btn btn-success btn-sm" onclick="registrarCobroConsulta(${c.id})">${c.cobroId ? 'Ver cobro registrado' : 'Registrar cobros'}</button>
                     </td>
                   </tr>`;
                 }))).join('')}
@@ -989,9 +996,52 @@ async function verConsulta(id) {
   `;
   document.getElementById('modal-footer').innerHTML = `
     <button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>
-    <button class="btn btn-primary" onclick="imprimirReceta(${id}); closeModal();">Imprimir Receta</button>
+    <button class="btn btn-primary" onclick="imprimirReceta(${id})">Imprimir Receta</button>
+    <button class="btn btn-success" onclick="registrarCobroConsulta(${id})">${c.cobroId ? 'Ver cobro registrado' : 'Registrar cobros'}</button>
   `;
   modal.classList.add('show');
+}
+
+async function registrarCobroConsulta(consultaId) {
+  try {
+    const consulta = await DB.get(DB.STORES.consultas, consultaId);
+    if (!consulta) return alert('No se encontró la consulta.');
+    const paciente = await DB.get(DB.STORES.pacientes, consulta.pacienteId);
+    const medico = await DB.get(DB.STORES.medicos, consulta.medicoId);
+
+    if (consulta.cobroId) {
+      const existing = await DB.get(DB.STORES.cobros, consulta.cobroId);
+      if (existing) {
+        alert('Esta consulta ya fue enviada a cobros. Estado: ' + (existing.status === 'pagado' ? 'PAGADO' : 'PENDIENTE') +
+          '. Importe: $' + (Number(existing.monto) || 0).toFixed(2));
+        return;
+      }
+    }
+
+    const sugerido = consulta.montoConsulta != null
+      ? consulta.montoConsulta
+      : (medico && medico.honorarios != null ? medico.honorarios : '');
+    const respuesta = prompt(
+      'REGISTRAR COBROS\nPaciente: ' + (paciente ? paciente.nombre : '—') +
+      '\nMédico: ' + (medico ? medico.nombre : '—') +
+      '\n\nConfirma el total a cobrar en MXN:',
+      String(sugerido)
+    );
+    if (respuesta === null) return;
+    const monto = Number(respuesta);
+    if (!Number.isFinite(monto) || monto <= 0 || monto > 10000000) {
+      return alert('Captura un importe válido mayor que cero.');
+    }
+
+    const resultado = await DB.registrarCobroConsulta(consultaId, monto);
+    alert(resultado.duplicate
+      ? 'La consulta ya estaba registrada en cobros. No se creó un duplicado.'
+      : 'Consulta enviada al área de Cobros. Total pendiente: $' + Number(resultado.cobro.monto).toFixed(2) +
+        '. Recepción podrá confirmar el pago.');
+    await renderConsultas();
+  } catch (error) {
+    alert('No se pudo registrar el cobro: ' + error.message);
+  }
 }
 
 // ========== MEDICAMENTOS ==========
