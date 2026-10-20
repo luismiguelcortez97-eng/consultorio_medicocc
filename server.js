@@ -36,12 +36,11 @@ if (
   !process.env.DATABASE_URL ||
   !process.env.ADMIN_USERNAME ||
   !process.env.ADMIN_PASSWORD ||
-  !process.env.COBROS_NIP ||
   !process.env.BALANCE_NIP ||
   !SESSION_SECRET
 ) {
   console.error(
-    'Faltan variables obligatorias: DATABASE_URL, ADMIN_USERNAME, ADMIN_PASSWORD, COBROS_NIP, BALANCE_NIP y SESSION_SECRET.'
+    'Faltan variables obligatorias: DATABASE_URL, ADMIN_USERNAME, ADMIN_PASSWORD, BALANCE_NIP y SESSION_SECRET.'
   );
   process.exit(1);
 }
@@ -224,26 +223,14 @@ function requireFinanceWrite(req, res, next) {
   if (req.session?.role !== 'admin') {
     return res.status(403).json({ error: 'Solo administración puede modificar registros financieros.' });
   }
-  if (!validFinanceToken(req, 'cobros') && !validFinanceToken(req, 'balance')) {
-    return res.status(403).json({
-      error: 'Vuelve a validar el NIP de Cobros o Balance para modificar registros.'
-    });
-  }
+  // Cobros ya no requiere NIP; se conserva el control de sesión y rol.
   next();
 }
 
 function requireFinanceRead(req, res, next) {
   const role = req.session?.role;
-  if (role === 'empleado' && validFinanceToken(req, 'cobros')) return next();
-  if (role !== 'admin') {
-    return res.status(403).json({ error: 'Solo administración o recepción autorizada puede consultar cobros.' });
-  }
-  if (!validFinanceToken(req, 'cobros') && !validFinanceToken(req, 'balance')) {
-    return res.status(403).json({
-      error: 'Ingresa el NIP de Cobros o Balance para consultar registros financieros.'
-    });
-  }
-  next();
+  if (['admin', 'empleado'].includes(role)) return next();
+  return res.status(403).json({ error: 'Solo administración o recepción autorizada puede consultar cobros.' });
 }
 
 function validStore(store) {
@@ -477,12 +464,7 @@ app.post('/api/auth/logout', (_req, res) => {
 app.post('/api/auth/verify-nip', requireAuth, (req, res) => {
   const { tipo, nip } = req.body || {};
 
-  const expected =
-    tipo === 'cobros'
-      ? process.env.COBROS_NIP
-      : tipo === 'balance'
-        ? process.env.BALANCE_NIP
-        : null;
+  const expected = tipo === 'balance' ? process.env.BALANCE_NIP : null;
 
   if (!expected || typeof nip !== 'string') {
     return res.status(400).json({
@@ -684,9 +666,7 @@ app.post('/api/cobros/:id/confirmar', requireAuth, async (req, res, next) => {
   if (!['admin', 'empleado'].includes(role)) {
     return res.status(403).json({ error: 'Solo recepción o administración puede confirmar el cobro.' });
   }
-  if (!validFinanceToken(req, 'cobros')) {
-    return res.status(403).json({ error: 'Valida el NIP de Cobros antes de confirmar un pago.' });
-  }
+  // El acceso a Cobros ya no requiere NIP; se conserva la validación de rol.
 
   const id = Number(req.params.id);
   const metodoPago = req.body?.metodoPago;
