@@ -2933,6 +2933,7 @@ async function guardarRecetaIndependiente() {
 }
 
 async function imprimirRecetaIndependiente(id) {
+  try {
   const r = await DB.get('recetas', id);
   if (!r) return alert('No se encontró la receta.');
   const plantillas = await DB.getAll('plantillas_receta');
@@ -2963,6 +2964,10 @@ async function imprimirRecetaIndependiente(id) {
     '<p style="margin:0;font-weight:bold">' + featureEscape(p.firma || (m ? m.nombre : 'Firma del médico')) + '</p><p style="margin:3px 0">Cédula: ' + featureEscape(m ? m.cedula || '—' : '—') + '</p></div>' +
     '<footer style="margin-top:35px;border-top:1px solid #cbd5e1;padding-top:10px;font-size:11px;color:#475569">' + featureEscape(p.pie || '') + '</footer></article>';
   window.print();
+  } catch (error) {
+    console.error('Error al imprimir receta independiente:', error);
+    alert('No se pudo preparar la impresión de la receta: ' + (error && error.message ? error.message : 'error inesperado') + '. Recarga la página e inténtalo de nuevo.');
+  }
 }
 
 // ========== EMPLEADOS ==========
