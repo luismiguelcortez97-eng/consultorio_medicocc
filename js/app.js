@@ -1255,10 +1255,13 @@ async function renderCobros() {
                         <button class="btn btn-outline btn-sm"
                           onclick="openCobroModal(${c.id})">Editar</button>
 
-                        ${c.status === 'pendiente'
-                          ? `<button class="btn btn-success btn-sm"
-                              onclick="marcarPagado(${c.id})">Marcar pagado</button>`
-                          : ''}
+                       ${c.status === 'pendiente'
+  ? `<button class="btn btn-success btn-sm"
+      onclick="marcarPagado(${c.id})">Marcar pagado</button>`
+  : ''}
+
+<button class="btn btn-danger btn-sm"
+  onclick="eliminarCobro(${c.id})">Eliminar</button>
                       </td>
                     </tr>
                   `).join('')}
