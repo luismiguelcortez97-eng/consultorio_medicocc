@@ -151,6 +151,13 @@ async function setStaffActive(id, active) {
   });
 }
 
+async function updateStaffUser(id, changes) {
+  return api(`/api/staff-users/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(changes)
+  });
+}
+
 async function remove(storeName, id) {
   return api(
     `/api/data/${encodeURIComponent(storeName)}/${encodeURIComponent(id)}`,
@@ -259,6 +266,7 @@ window.DB = {
   sendChat,
   addStaffUser,
   setStaffActive,
+  updateStaffUser,
   remove,
   clearStore,
   getConfig,
