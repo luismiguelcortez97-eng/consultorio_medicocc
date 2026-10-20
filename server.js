@@ -221,12 +221,10 @@ function validFinanceToken(req, scope) {
 
 
 function requireFinanceWrite(req, res, next) {
-  const role = req.session?.role;
-  const isReception = role === 'empleado' && validFinanceToken(req, 'cobros');
-  if (role !== 'admin' && !isReception) {
-    return res.status(403).json({ error: 'Solo administración o recepción autorizada puede modificar cobros.' });
+  if (req.session?.role !== 'admin') {
+    return res.status(403).json({ error: 'Solo administración puede modificar registros financieros.' });
   }
-  if (role === 'admin' && !validFinanceToken(req, 'cobros') && !validFinanceToken(req, 'balance')) {
+  if (!validFinanceToken(req, 'cobros') && !validFinanceToken(req, 'balance')) {
     return res.status(403).json({
       error: 'Vuelve a validar el NIP de Cobros o Balance para modificar registros.'
     });
@@ -236,13 +234,13 @@ function requireFinanceWrite(req, res, next) {
 
 function requireFinanceRead(req, res, next) {
   const role = req.session?.role;
-  const isReception = role === 'empleado' && validFinanceToken(req, 'cobros');
-  if (role !== 'admin' && !isReception) {
+  if (role === 'empleado' && validFinanceToken(req, 'cobros')) return next();
+  if (role !== 'admin') {
     return res.status(403).json({ error: 'Solo administración o recepción autorizada puede consultar cobros.' });
   }
-  if (role === 'admin' && !validFinanceToken(req, 'cobros') && !validFinanceToken(req, 'balance')) {
+  if (!validFinanceToken(req, 'cobros') && !validFinanceToken(req, 'balance')) {
     return res.status(403).json({
-      error: 'Ingresa el NIP de Cobros o Balance para consultar los registros financieros.'
+      error: 'Ingresa el NIP de Cobros o Balance para consultar registros financieros.'
     });
   }
   next();
@@ -672,6 +670,61 @@ app.post('/api/consultas/:id/registrar-cobro', requireAuth, async (req, res, nex
     );
     await client.query('COMMIT');
     res.status(201).json({ cobro, duplicate: false });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(error);
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/cobros/:id/confirmar', requireAuth, async (req, res, next) => {
+  const role = req.session?.role;
+  if (!['admin', 'empleado'].includes(role)) {
+    return res.status(403).json({ error: 'Solo recepción o administración puede confirmar el cobro.' });
+  }
+  if (!validFinanceToken(req, 'cobros')) {
+    return res.status(403).json({ error: 'Valida el NIP de Cobros antes de confirmar un pago.' });
+  }
+
+  const id = Number(req.params.id);
+  const metodoPago = req.body?.metodoPago;
+  if (!Number.isSafeInteger(id) || id < 1 || !['Efectivo', 'Tarjeta', 'Transferencia'].includes(metodoPago)) {
+    return res.status(400).json({ error: 'Cobro o método de pago inválido.' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const found = await client.query(
+      "SELECT data FROM app_records WHERE store='cobros' AND record_key=$1 FOR UPDATE",
+      [String(id)]
+    );
+    if (!found.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'No se encontró el cobro.' });
+    }
+    const cobro = found.rows[0].data;
+    if (cobro.status === 'pagado') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Este cobro ya fue confirmado.' });
+    }
+
+    const now = new Date().toISOString();
+    const user = req.session?.displayName || req.session?.username || 'Recepción';
+    cobro.status = 'pagado';
+    cobro.metodoPago = metodoPago;
+    cobro.cobradoPor = user;
+    cobro.cobradoAt = now;
+    cobro.audit = Array.isArray(cobro.audit) ? cobro.audit : [];
+    cobro.audit.push({ fecha: now, accion: 'marcado_pagado', metodoPago, usuario: user });
+
+    await client.query(
+      "UPDATE app_records SET data=$2, updated_at=NOW() WHERE store='cobros' AND record_key=$1",
+      [String(id), cobro]
+    );
+    await client.query('COMMIT');
+    res.json(cobro);
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     next(error);
