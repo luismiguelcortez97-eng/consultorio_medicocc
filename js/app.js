@@ -111,6 +111,7 @@ function showLogin() {
 }
 
 function showApp() {
+  aplicarTemaGuardado();
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   ['personal', 'empleados', 'balance'].forEach(function (module) {
@@ -215,6 +216,7 @@ async function navigateTo(module) {
   const titles = {
     dashboard: 'Dashboard',
     medicos: 'Médicos',
+    configuracion: 'Configuración',
     pacientes: 'Pacientes y Expedientes',
     consultas: 'Consultas Médicas',
     agenda: 'Agenda mensual de consultas',
@@ -239,6 +241,7 @@ async function navigateTo(module) {
     
       case 'dashboard': await renderDashboard(); break;
       case 'medicos': await renderMedicos(); break;
+      case 'configuracion': renderConfiguracion(); break;
       case 'pacientes': await renderPacientes(); break;
       case 'consultas': await renderConsultas(); break;
       case 'agenda': await renderAgenda(); break;
@@ -679,6 +682,7 @@ async function deletePaciente(id) {
 async function renderConsultas() {
   const consultas = (await DB.getAll(DB.STORES.consultas)).filter(c => !c.eliminada);
   const area = document.getElementById('content-area');
+  const fechaHoy = localDateString(new Date());
 
   area.innerHTML = `
     <div class="card">
@@ -687,41 +691,90 @@ async function renderConsultas() {
         <button class="btn btn-primary btn-sm" onclick="openConsultaModal()">+ Nueva Consulta</button>
       </div>
       <div class="card-body">
-        ${consultas.length === 0
-          ? '<div class="empty-state"><div class="icon">📋</div><p>No hay consultas registradas.</p></div>'
-          : `<div class="table-responsive"><table>
-              <thead>
-                <tr>
-                  <th>Fecha</th>
-                  <th>Paciente</th>
-                  <th>Médico</th>
-                  <th>Motivo</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${(await Promise.all(consultas.slice().reverse().map(async c => {
-                  const p = await DB.get(DB.STORES.pacientes, c.pacienteId);
-                  const m = await DB.get(DB.STORES.medicos, c.medicoId);
-                  return `<tr>
-                    <td>${formatDate(c.fecha)}</td>
-                    <td>${p ? escapeHtml(p.nombre) : '—'}</td>
-                    <td>${m ? escapeHtml(m.nombre) : '—'}</td>
-                    <td>${escapeHtml((c.motivo || '').substring(0, 50))}${(c.motivo || '').length > 50 ? '…' : ''}</td>
-                    <td>
-                      <button class="btn btn-outline btn-sm" onclick="verConsulta(${c.id})">Ver</button>
-                      <button class="btn btn-primary btn-sm" onclick="imprimirReceta(${c.id})">Receta</button>
-                      <button class="btn btn-success btn-sm" onclick="registrarCobroConsulta(${c.id})">${c.cobroId ? 'Ver cobro registrado' : 'Registrar cobros'}</button>
-                      <button class="btn btn-danger btn-sm" onclick="eliminarConsulta(${c.id})">Eliminar</button>
-                    </td>
-                  </tr>`;
-                }))).join('')}
-              </tbody>
-            </table></div>`
-        }
+        <div class="consultas-filtros">
+          <div class="form-group">
+            <label for="consultas-filtro-tipo">Mostrar consultas</label>
+            <select class="form-control" id="consultas-filtro-tipo">
+              <option value="todas">Todas las consultas</option>
+              <option value="dia">Por día</option>
+              <option value="semana">Por semana</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="consultas-filtro-fecha">Fecha de referencia</label>
+            <input class="form-control" id="consultas-filtro-fecha" type="date" value="${fechaHoy}">
+          </div>
+          <p id="consultas-filtro-resumen" class="text-muted" aria-live="polite"></p>
+        </div>
+        <div id="consultas-tabla"></div>
       </div>
     </div>
   `;
+
+  const tipoFiltro = document.getElementById('consultas-filtro-tipo');
+  const fechaFiltro = document.getElementById('consultas-filtro-fecha');
+  const tabla = document.getElementById('consultas-tabla');
+  const resumen = document.getElementById('consultas-filtro-resumen');
+
+  async function actualizarTabla() {
+    const tipo = tipoFiltro.value;
+    const fecha = fechaFiltro.value || fechaHoy;
+    let inicioSemana = '';
+    let finSemana = '';
+
+    if (tipo === 'semana') {
+      const partes = fecha.split('-').map(Number);
+      const seleccionada = new Date(partes[0], partes[1] - 1, partes[2]);
+      seleccionada.setHours(0, 0, 0, 0);
+      const lunes = new Date(seleccionada);
+      lunes.setDate(lunes.getDate() - ((lunes.getDay() + 6) % 7));
+      const siguienteLunes = new Date(lunes);
+      siguienteLunes.setDate(siguienteLunes.getDate() + 7);
+      inicioSemana = localDateString(lunes);
+      finSemana = localDateString(siguienteLunes);
+    }
+
+    const filtradas = consultas.filter(function (c) {
+      const fechaConsulta = String(c.fecha || '').slice(0, 10);
+      if (tipo === 'dia') return fechaConsulta === fecha;
+      if (tipo === 'semana') return fechaConsulta >= inicioSemana && fechaConsulta < finSemana;
+      return true;
+    }).sort(function (a, b) {
+      return String(b.fecha || '').localeCompare(String(a.fecha || ''));
+    });
+
+    if (tipo === 'dia') resumen.textContent = 'Consultas del ' + formatDate(fecha) + ': ' + filtradas.length;
+    else if (tipo === 'semana') resumen.textContent = 'Semana del ' + formatDate(inicioSemana) + ' al ' + formatDate(localDateString(new Date(new Date(finSemana + 'T00:00:00').getTime() - 86400000))) + ': ' + filtradas.length;
+    else resumen.textContent = 'Todas las consultas: ' + filtradas.length;
+
+    if (!filtradas.length) {
+      tabla.innerHTML = '<div class="empty-state"><div class="icon">📋</div><p>No hay consultas para el periodo seleccionado.</p></div>';
+      return;
+    }
+
+    const filas = await Promise.all(filtradas.map(async function (c) {
+      const p = await DB.get(DB.STORES.pacientes, c.pacienteId);
+      const m = await DB.get(DB.STORES.medicos, c.medicoId);
+      return `<tr>
+        <td>${formatDate(c.fecha)}</td>
+        <td>${p ? escapeHtml(p.nombre) : '—'}</td>
+        <td>${m ? escapeHtml(m.nombre) : '—'}</td>
+        <td>${escapeHtml((c.motivo || '').substring(0, 50))}${(c.motivo || '').length > 50 ? '…' : ''}</td>
+        <td>
+          <button class="btn btn-outline btn-sm" onclick="verConsulta(${c.id})">Ver</button>
+          <button class="btn btn-primary btn-sm" onclick="imprimirReceta(${c.id})">Receta</button>
+          <button class="btn btn-success btn-sm" onclick="registrarCobroConsulta(${c.id})">${c.cobroId ? 'Ver cobro registrado' : 'Registrar cobros'}</button>
+          <button class="btn btn-danger btn-sm" onclick="eliminarConsulta(${c.id})">Eliminar</button>
+        </td>
+      </tr>`;
+    }));
+
+    tabla.innerHTML = '<div class="table-responsive"><table><thead><tr><th>Fecha</th><th>Paciente</th><th>Médico</th><th>Motivo</th><th>Acciones</th></tr></thead><tbody>' + filas.join('') + '</tbody></table></div>';
+  }
+
+  tipoFiltro.addEventListener('change', actualizarTabla);
+  fechaFiltro.addEventListener('change', actualizarTabla);
+  await actualizarTabla();
 }
 
 async function eliminarConsulta(id) {
@@ -1141,6 +1194,8 @@ async function verConsulta(id) {
   if (!c) return;
   const p = await DB.get(DB.STORES.pacientes, c.pacienteId);
   const m = await DB.get(DB.STORES.medicos, c.medicoId);
+  const fechaNacPaciente = obtenerFechaNacimientoPaciente(p);
+  const edadPaciente = calcularEdad(fechaNacPaciente);
   const allMeds = await DB.getAll(DB.STORES.medicamentos);
   const allEsts = await DB.getAll(DB.STORES.estudios);
 
@@ -1908,6 +1963,44 @@ async function cancelarCobro(id) {
   }
 }
 
+// ========== CONFIGURACIÓN DE APARIENCIA ==========
+function aplicarTemaSuave(activar, guardar = true) {
+  const habilitado = Boolean(activar);
+  document.body.classList.toggle('tema-suave', habilitado);
+  if (guardar) {
+    try { localStorage.setItem('cmcc_tema_apariencia', habilitado ? 'suave' : 'normal'); }
+    catch (error) { console.debug('No se pudo guardar la preferencia visual', error); }
+  }
+}
+
+function aplicarTemaGuardado() {
+  let habilitado = false;
+  try { habilitado = localStorage.getItem('cmcc_tema_apariencia') === 'suave'; }
+  catch (error) { /* Preferencia local no disponible: se usa la apariencia normal. */ }
+  aplicarTemaSuave(habilitado, false);
+}
+
+function renderConfiguracion() {
+  const area = document.getElementById('content-area');
+  const habilitado = document.body.classList.contains('tema-suave');
+  area.innerHTML = `
+    <div class="card">
+      <div class="card-header"><h3>Apariencia del programa</h3></div>
+      <div class="card-body">
+        <p class="text-muted mb-2">Reduce el brillo de los fondos y las superficies para trabajar con más comodidad. Los colores de los botones, alertas y estados se conservan.</p>
+        <label class="configuracion-tema-control" for="config-tema-suave">
+          <input type="checkbox" id="config-tema-suave" ${habilitado ? 'checked' : ''}>
+          <span><strong>Modo nocturno suave</strong><small>Usa fondos gris oscuro suaves, sin invertir indiscriminadamente los colores.</small></span>
+        </label>
+        <p class="text-muted mt-2">La preferencia se guarda en este navegador y se aplica al volver a entrar.</p>
+      </div>
+    </div>
+  `;
+  document.getElementById('config-tema-suave').addEventListener('change', function (event) {
+    aplicarTemaSuave(event.target.checked);
+  });
+}
+
 // ========== RESPALDOS ==========
 function renderRespaldos() {
   const area = document.getElementById('content-area');
@@ -2020,7 +2113,8 @@ async function imprimirReceta(consultaId) {
 
       <div style="margin-bottom: 12px; font-size: 10pt;">
         <strong>Paciente:</strong> ${p ? escapeHtml(p.nombre) : '—'}<br>
-        ${p && p.fechaNac ? 'Fecha nac.: ' + p.fechaNac + '<br>' : ''}
+        <strong>Fecha de nacimiento:</strong> ${fechaNacPaciente ? escapeHtml(formatDate(fechaNacPaciente)) : 'No registrada'}<br>
+        <strong>Edad:</strong> ${edadPaciente == null ? 'No disponible' : edadPaciente + ' años'}<br>
         <strong>Fecha de consulta:</strong> ${formatDate(c.fecha)}
       </div>
 
@@ -2620,6 +2714,10 @@ async function enviarMensajeChat(event) {
   } finally { button.disabled = false; input.focus(); }
 }
 
+function obtenerFechaNacimientoPaciente(paciente) {
+  return paciente ? (paciente.fechaNac || paciente.fechaNacimiento || paciente.fecha_nacimiento || '') : '';
+}
+
 function calcularEdad(fechaNacimiento) {
   if (!fechaNacimiento) return null;
   const nacimiento = new Date(String(fechaNacimiento).slice(0, 10) + 'T00:00:00');
@@ -2673,7 +2771,7 @@ async function renderRecetas() {
   const pacienteInput = document.getElementById('rec-paciente');
   pacienteInput.addEventListener('input', function () {
     const elegido = pacientes.find(function (p) { return String(p.nombre || '').trim().toLocaleLowerCase('es-MX') === pacienteInput.value.trim().toLocaleLowerCase('es-MX'); });
-    const fechaNac = elegido ? (elegido.fechaNac || elegido.fechaNacimiento || '') : '';
+    const fechaNac = obtenerFechaNacimientoPaciente(elegido);
     document.getElementById('rec-fecha-nac').value = fechaNac;
     const edad = fechaNac ? calcularEdad(fechaNac) : null;
     document.getElementById('rec-edad').value = edad == null ? '' : edad + ' años';
@@ -2758,7 +2856,7 @@ async function guardarRecetaIndependiente() {
   }
   const pacientes = await DB.getAll(DB.STORES.pacientes);
   const pacienteEncontrado = pacientes.find(function (p) { return String(p.nombre || '').trim().toLocaleLowerCase('es-MX') === paciente.toLocaleLowerCase('es-MX'); });
-  const fechaNac = pacienteEncontrado ? (pacienteEncontrado.fechaNac || pacienteEncontrado.fechaNacimiento || '') : '';
+  const fechaNac = obtenerFechaNacimientoPaciente(pacienteEncontrado);
   const edadPaciente = fechaNac ? calcularEdad(fechaNac) : null;
   const data = {
     paciente: paciente, fechaNacimiento: fechaNac, edad: edadPaciente, fecha: fecha, medicoId: Number(medicoId), plantillaId: Number(plantillaId),
@@ -2783,6 +2881,10 @@ async function imprimirRecetaIndependiente(id) {
   if (!r) return alert('No se encontró la receta.');
   const plantillas = await DB.getAll('plantillas_receta');
   const medicos = await DB.getAll(DB.STORES.medicos);
+  const pacientes = await DB.getAll(DB.STORES.pacientes);
+  const pacienteActual = pacientes.find(function (x) { return String(x.nombre || '').trim().toLocaleLowerCase('es-MX') === String(r.paciente || '').trim().toLocaleLowerCase('es-MX'); });
+  const fechaNacReceta = r.fechaNacimiento || r.fechaNac || obtenerFechaNacimientoPaciente(pacienteActual);
+  const edadReceta = fechaNacReceta ? calcularEdad(fechaNacReceta) : (r.edad != null ? r.edad : null);
   const p = plantillas.find(function (x) { return String(x.id) === String(r.plantillaId); });
   const m = medicos.find(function (x) { return String(x.id) === String(r.medicoId); });
   if (!p) return alert('La plantilla guardada ya no existe. Selecciona una plantilla y crea una receta nueva.');
@@ -2797,7 +2899,7 @@ async function imprimirRecetaIndependiente(id) {
     '<p style="margin:4px 0">' + featureEscape(p.domicilio || '') + ' ' + featureEscape(p.telefono || '') + '</p></header>' +
     '<div style="display:flex;justify-content:space-between;gap:20px;margin-bottom:18px"><h3 style="margin:0">RECETA MÉDICA</h3><span>Fecha: ' + featureEscape(r.fecha) + '</span></div>' +
     '<p style="font-size:17px;border-bottom:1px solid #cbd5e1;padding-bottom:12px"><strong>Paciente:</strong> ' + featureEscape(r.paciente) + '</p>' +
-    '<p><strong>Fecha de nacimiento:</strong> ' + featureEscape(r.fechaNacimiento || 'No registrada') + ' &nbsp; <strong>Edad:</strong> ' + featureEscape(r.edad != null ? String(r.edad) + ' años' : 'No disponible') + '</p>' +
+    '<p><strong>Fecha de nacimiento:</strong> ' + featureEscape(fechaNacReceta ? formatDate(fechaNacReceta) : 'No registrada') + ' &nbsp; <strong>Edad:</strong> ' + featureEscape(edadReceta != null ? String(edadReceta) + ' años' : 'No disponible') + '</p>' +
     field('Diagnóstico / motivo', r.diagnostico) + '<div style="border:1px solid #cbd5e1;border-radius:8px;padding:18px;margin:22px 0;min-height:130px">' +
     '<h3 style="margin:0 0 14px">Rp.</h3><p style="font-size:17px;margin:0 0 10px"><strong>' + featureEscape(r.medicamento) + '</strong></p>' +
     field('Dosis y vía', r.dosis) + field('Frecuencia', r.frecuencia) + field('Duración', r.duracion) + field('Cantidad', r.cantidad) + '</div>' +
