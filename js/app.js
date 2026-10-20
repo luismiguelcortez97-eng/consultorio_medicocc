@@ -111,13 +111,13 @@ function showLogin() {
 function showApp() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
-  const adminNav = document.querySelector('.nav-item[data-module="personal"]');
-  if (adminNav) adminNav.style.display = APP.currentRole === 'admin' ? 'flex' : 'none';
-  ['cobros', 'balance'].forEach(function (module) {
+  ['personal', 'empleados', 'balance'].forEach(function (module) {
     const item = document.querySelector('.nav-item[data-module="' + module + '"]');
-    const canSee = module === 'cobros' ? ['admin', 'empleado'].includes(APP.currentRole) : APP.currentRole === 'admin';
-    if (item) item.style.display = canSee ? 'flex' : 'none';
+    if (item) item.style.display = APP.currentRole === 'admin' ? 'flex' : 'none';
   });
+  // Cobros es accesible para todos los roles autenticados, incluida Enfermería.
+  const cobrosNav = document.querySelector('.nav-item[data-module="cobros"]');
+  if (cobrosNav) cobrosNav.style.display = 'flex';
   navigateTo('dashboard');
   if (APP.chatWatchTimer) clearInterval(APP.chatWatchTimer);
   APP.chatWatchTimer = setInterval(async function () {
@@ -139,8 +139,8 @@ async function navigateTo(module) {
     clearInterval(APP.chatTimer);
     APP.chatTimer = null;
   }
-  if (module === 'personal' && APP.currentRole !== 'admin') {
-    alert('Solo el administrador puede gestionar las cuentas del personal.');
+  if (['personal', 'empleados', 'balance'].includes(module) && APP.currentRole !== 'admin') {
+    alert('Esta sección es exclusiva del administrador.');
     return;
   }
   // Check NIP for protected modules
