@@ -1884,6 +1884,9 @@ async function imprimirReceta(consultaId) {
   `;
 
   window.print();
+  if (confirm('Receta preparada. ¿Deseas registrar ahora el cobro de esta consulta?')) {
+    await registrarCobroConsulta(consultaId);
+  }
 }
 
 async function imprimirBalance() {
