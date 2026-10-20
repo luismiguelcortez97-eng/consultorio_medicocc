@@ -17,8 +17,6 @@ services:
         sync: false
       - key: ADMIN_PASSWORD
         sync: false
-      - key: COBROS_NIP
-        sync: false
       - key: BALANCE_NIP
         sync: false
       - key: SESSION_SECRET
