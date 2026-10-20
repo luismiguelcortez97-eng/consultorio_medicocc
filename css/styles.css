@@ -684,3 +684,11 @@ textarea.form-control {
   #print-area { display: block !important; position: absolute; inset: 0; width: 100%; background: white; }
   .rx-print { page-break-inside: avoid; }
 }
+
+
+/* Indicador rojo de mensajes nuevos y buscador de medicamentos en receta */
+.chat-unread-dot { display:inline-block; width:9px; height:9px; margin-left:auto; border-radius:50%; background:#dc3545; box-shadow:0 0 0 2px rgba(220,53,69,.18); flex:0 0 9px; }
+.chat-unread-dot[hidden] { display:none !important; }
+.recipe-med-results { display:flex; flex-direction:column; gap:4px; margin-top:6px; max-height:220px; overflow:auto; }
+.recipe-med-result { width:100%; text-align:left; padding:9px 11px; border:1px solid var(--border); border-radius:6px; background:#fff; color:#212529; cursor:pointer; font:inherit; }
+.recipe-med-result:hover, .recipe-med-result:focus { background:#eef5ff; border-color:var(--primary); }
