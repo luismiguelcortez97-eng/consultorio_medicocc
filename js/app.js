@@ -1603,7 +1603,7 @@ async function marcarPagado(id) {
 
 // ========== BALANCE ==========
 async function renderBalance() {
-  const cobros = await DB.getAll(DB.STORES.cobros);
+  const cobros = await DB.getAll('balance_cobros');
   const medicos = await DB.getAll(DB.STORES.medicos);
   const pagados = cobros.filter(c => c.status === 'pagado');
 
