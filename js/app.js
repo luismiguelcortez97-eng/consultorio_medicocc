@@ -1275,6 +1275,24 @@ async function renderCobros() {
 }
 
 
+async function eliminarCobro(id) {
+  const confirmar = confirm(
+    '¿Estás seguro de eliminar este cobro? ' +
+    'Esta acción puede afectar el balance.'
+  );
+
+  if (!confirmar) return;
+
+  try {
+    await DB.remove(DB.STORES.cobros, id);
+    alert('Cobro eliminado correctamente.');
+    await renderCobros();
+  } catch (error) {
+    console.error('Error al eliminar el cobro:', error);
+    alert('No se pudo eliminar el cobro. Intenta nuevamente.');
+  }
+}
+
 function openCobroModal(id = null) {
   APP.editingId = id;
   const modal = document.getElementById('generic-modal');
