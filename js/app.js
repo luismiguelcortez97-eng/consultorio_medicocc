@@ -7,6 +7,8 @@ const APP = {
   currentRole: 'admin',
   currentModule: 'dashboard',
   chatTimer: null,
+  chatLastMessageId: null,
+  chatAudioContext: null,
   agendaMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   agendaSelectedDate: localDateString(new Date()),
   editingId: null,
@@ -120,10 +122,12 @@ function showApp() {
   if (cobrosNav) cobrosNav.style.display = 'flex';
   navigateTo('dashboard');
   if (APP.chatWatchTimer) clearInterval(APP.chatWatchTimer);
+  APP.chatLastMessageId = null;
   APP.chatWatchTimer = setInterval(async function () {
     if (!APP.currentUser) return;
     try {
       const messages = await DB.getAll('chat');
+      procesarNotificacionesChat(messages);
       const maxId = messages.reduce(function (max, m) { return Math.max(max, Number(m.id) || 0); }, 0);
       const key = 'cmcc_chat_last_seen_' + APP.currentUser;
       const lastSeen = Number(localStorage.getItem(key) || 0);
@@ -131,6 +135,54 @@ function showApp() {
       if (dot) dot.hidden = APP.currentModule === 'chat' || maxId <= lastSeen;
     } catch (e) { console.debug('No se pudo revisar chat', e); }
   }, 10000);
+}
+
+// ========== SONIDO DE NOTIFICACIÓN DEL CHAT (SOLO ENFERMERÍA) ==========
+function prepararAudioChat() {
+  if (APP.currentRole !== 'enfermeria') return;
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    if (!APP.chatAudioContext) APP.chatAudioContext = new AudioCtx();
+    if (APP.chatAudioContext.state === 'suspended') APP.chatAudioContext.resume().catch(function () {});
+  } catch (e) { console.debug('Audio de chat no disponible', e); }
+}
+
+document.addEventListener('pointerdown', prepararAudioChat);
+document.addEventListener('keydown', prepararAudioChat);
+
+function procesarNotificacionesChat(messages) {
+  const maxId = messages.reduce(function (max, m) { return Math.max(max, Number(m.id) || 0); }, 0);
+  // La primera lectura establece una referencia y evita sonidos por mensajes antiguos.
+  if (APP.chatLastMessageId === null) {
+    APP.chatLastMessageId = maxId;
+    return;
+  }
+  const nuevos = messages.filter(function (m) {
+    return Number(m.id) > APP.chatLastMessageId && m.senderUsername !== APP.currentUser;
+  });
+  APP.chatLastMessageId = Math.max(APP.chatLastMessageId, maxId);
+  if (APP.currentRole === 'enfermeria' && nuevos.length) reproducirSonidoChat();
+}
+
+function reproducirSonidoChat() {
+  if (APP.currentRole !== 'enfermeria') return;
+  prepararAudioChat();
+  const ctx = APP.chatAudioContext;
+  if (!ctx || ctx.state !== 'running') return;
+  try {
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.value = 880;
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.025);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22);
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+    oscillator.start();
+    oscillator.stop(ctx.currentTime + 0.23);
+  } catch (e) { console.debug('No se pudo reproducir el sonido del chat', e); }
 }
 
 // ========== NAVIGATION ==========
