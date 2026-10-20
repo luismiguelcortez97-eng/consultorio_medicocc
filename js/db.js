@@ -10,7 +10,10 @@ const STORES = {
   cobros: 'cobros',
   config: 'config',
   enfermeria: 'enfermeria',
-  empleados: 'empleados'
+  empleados: 'empleados',
+  agenda: 'agenda',
+  plantillas_receta: 'plantillas_receta',
+  recetas: 'recetas'
 };
 
 async function api(path, options = {}) {
