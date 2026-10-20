@@ -2145,6 +2145,388 @@ async function guardarEnfermeria(event) {
   }
 }
 
+
+
+// ========== AGENDA MENSUAL ==========
+function featureEscape(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
+    return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+  });
+}
+
+function localDateString(date) {
+  return date.getFullYear() + '-' +
+    String(date.getMonth() + 1).padStart(2, '0') + '-' +
+    String(date.getDate()).padStart(2, '0');
+}
+
+async function renderAgenda() {
+  const area = document.getElementById('content-area');
+  const month = new Date(APP.agendaMonth.getFullYear(), APP.agendaMonth.getMonth(), 1);
+  const monthStart = new Date(month.getFullYear(), month.getMonth(), 1);
+  const firstDay = (monthStart.getDay() + 6) % 7;
+  const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  const citas = await DB.getAll('agenda');
+  const pacientes = await DB.getAll(DB.STORES.pacientes);
+  const medicos = await DB.getAll(DB.STORES.medicos);
+  const patientName = function (id) {
+    const p = pacientes.find(function (x) { return String(x.id) === String(id); });
+    return p ? p.nombre : 'Paciente no disponible';
+  };
+  const doctorName = function (id) {
+    const m = medicos.find(function (x) { return String(x.id) === String(id); });
+    return m ? m.nombre : 'Médico no disponible';
+  };
+  let cells = '';
+  for (let i = 0; i < firstDay; i++) cells += '<div class="agenda-day agenda-day-empty"></div>';
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = localDateString(new Date(month.getFullYear(), month.getMonth(), day));
+    const dayCitas = citas.filter(function (c) { return c.fecha === date && c.estado !== 'Cancelada'; });
+    const selected = APP.agendaSelectedDate === date ? ' agenda-day-selected' : '';
+    cells += '<button type="button" class="agenda-day' + selected + '" onclick="seleccionarDiaAgenda(\'' + date + '\')">' +
+      '<span class="agenda-day-number">' + day + '</span>' +
+      (dayCitas.length ? '<span class="agenda-day-count">' + dayCitas.length + ' cita' + (dayCitas.length === 1 ? '' : 's') + '</span>' : '') +
+      dayCitas.slice(0, 2).map(function (c) {
+        return '<span class="agenda-day-event">' + featureEscape(c.hora || '') + ' ' + featureEscape(patientName(c.pacienteId)) + '</span>';
+      }).join('') +
+      (dayCitas.length > 2 ? '<span class="agenda-day-more">+' + (dayCitas.length - 2) + ' más</span>' : '') +
+      '</button>';
+  }
+  const citasDia = citas.filter(function (c) { return c.fecha === APP.agendaSelectedDate; })
+    .sort(function (a, b) { return String(a.hora || '').localeCompare(String(b.hora || '')); });
+  area.innerHTML =
+    '<div class="card agenda-card"><div class="card-header agenda-heading">' +
+    '<div><h3>Agenda de consultas</h3><p class="text-muted">Organiza las citas por paciente, fecha y médico.</p></div>' +
+    '<button class="btn btn-primary" onclick="openAgendaModal()">+ Nueva cita</button></div>' +
+    '<div class="agenda-toolbar"><button class="btn btn-outline btn-sm" onclick="agendaMoverMes(-1)">‹ Anterior</button>' +
+    '<h3>' + featureEscape(month.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })) + '</h3>' +
+    '<button class="btn btn-outline btn-sm" onclick="agendaMoverMes(1)">Siguiente ›</button>' +
+    '<button class="btn btn-outline btn-sm" onclick="agendaIrHoy()">Hoy</button></div>' +
+    '<div class="agenda-weekdays">' + ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map(function (d) { return '<div>' + d + '</div>'; }).join('') + '</div>' +
+    '<div class="agenda-grid">' + cells + '</div></div>' +
+    '<div class="card"><div class="card-header"><h3>Citas del ' + featureEscape(APP.agendaSelectedDate) + '</h3>' +
+    '<button class="btn btn-primary btn-sm" onclick="openAgendaModal(null,\'' + APP.agendaSelectedDate + '\')">+ Agendar este día</button></div>' +
+    '<div class="card-body">' +
+    (citasDia.length ? '<div class="table-responsive"><table><thead><tr><th>Hora</th><th>Paciente</th><th>Médico</th><th>Motivo</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>' +
+      citasDia.map(function (c) {
+        return '<tr><td>' + featureEscape(c.hora || '—') + '</td><td><strong>' + featureEscape(patientName(c.pacienteId)) + '</strong></td>' +
+          '<td>' + featureEscape(doctorName(c.medicoId)) + '</td><td>' + featureEscape(c.motivo || '—') + '</td>' +
+          '<td>' + featureEscape(c.estado || 'Programada') + '</td><td>' +
+          (c.estado === 'Cancelada' ? '' : '<button class="btn btn-outline btn-sm" onclick="openAgendaModal(' + Number(c.id) + ')">Editar</button> ' +
+          '<button class="btn btn-danger btn-sm" onclick="cancelarCitaAgenda(' + Number(c.id) + ')">Cancelar</button>') + '</td></tr>';
+      }).join('') + '</tbody></table></div>' : '<div class="empty-state"><p>No hay citas para este día.</p></div>') +
+    '</div></div>';
+}
+
+function agendaMoverMes(delta) {
+  APP.agendaMonth = new Date(APP.agendaMonth.getFullYear(), APP.agendaMonth.getMonth() + delta, 1);
+  renderAgenda();
+}
+function agendaIrHoy() {
+  const today = new Date();
+  APP.agendaMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  APP.agendaSelectedDate = localDateString(today);
+  renderAgenda();
+}
+function seleccionarDiaAgenda(date) {
+  APP.agendaSelectedDate = date;
+  const parts = date.split('-').map(Number);
+  APP.agendaMonth = new Date(parts[0], parts[1] - 1, 1);
+  renderAgenda();
+}
+
+async function openAgendaModal(id, date) {
+  APP.editingId = id || null;
+  const modal = document.getElementById('generic-modal');
+  const body = document.getElementById('modal-body');
+  const footer = document.getElementById('modal-footer');
+  const pacientes = await DB.getAll(DB.STORES.pacientes);
+  const medicos = (await DB.getAll(DB.STORES.medicos)).filter(function (m) { return m.activo !== false; });
+  let c = { fecha: date || APP.agendaSelectedDate || localDateString(new Date()), hora: '09:00', pacienteId: '', medicoId: '', motivo: '', estado: 'Programada' };
+  if (id) c = await DB.get('agenda', id) || c;
+  document.getElementById('modal-title').textContent = id ? 'Editar cita' : 'Nueva cita';
+  body.innerHTML =
+    '<div class="form-group"><label>Paciente *</label><select class="form-control" id="ag-paciente" required><option value="">Selecciona paciente</option>' +
+    pacientes.map(function (p) { return '<option value="' + p.id + '"' + (String(c.pacienteId) === String(p.id) ? ' selected' : '') + '>' + featureEscape(p.nombre) + '</option>'; }).join('') +
+    '</select></div><div class="form-row"><div class="form-group"><label>Fecha *</label><input class="form-control" id="ag-fecha" type="date" required value="' + featureEscape(c.fecha) + '"></div>' +
+    '<div class="form-group"><label>Hora *</label><input class="form-control" id="ag-hora" type="time" required value="' + featureEscape(c.hora || '09:00') + '"></div></div>' +
+    '<div class="form-group"><label>Médico que atenderá *</label><select class="form-control" id="ag-medico" required><option value="">Selecciona médico</option>' +
+    medicos.map(function (m) { return '<option value="' + m.id + '"' + (String(c.medicoId) === String(m.id) ? ' selected' : '') + '>' + featureEscape(m.nombre) + '</option>'; }).join('') +
+    '</select></div><div class="form-group"><label>Motivo / nota</label><textarea class="form-control" id="ag-motivo" rows="3">' + featureEscape(c.motivo || '') + '</textarea></div>';
+  footer.innerHTML = '<button class="btn btn-secondary" onclick="closeModal()">Cerrar</button><button class="btn btn-primary" onclick="guardarCitaAgenda()">Guardar cita</button>';
+  modal.classList.add('show');
+}
+
+async function guardarCitaAgenda() {
+  const pacienteId = document.getElementById('ag-paciente').value;
+  const fecha = document.getElementById('ag-fecha').value;
+  const hora = document.getElementById('ag-hora').value;
+  const medicoId = document.getElementById('ag-medico').value;
+  const motivo = document.getElementById('ag-motivo').value.trim();
+  if (!pacienteId || !fecha || !hora || !medicoId) return alert('Completa paciente, fecha, hora y médico.');
+  const citas = await DB.getAll('agenda');
+  const conflicto = citas.some(function (c) {
+    return String(c.id) !== String(APP.editingId || '') && c.fecha === fecha && c.hora === hora &&
+      String(c.medicoId) === String(medicoId) && c.estado !== 'Cancelada';
+  });
+  if (conflicto) return alert('Ese médico ya tiene una cita registrada en esa fecha y hora.');
+  const data = { pacienteId: Number(pacienteId), fecha: fecha, hora: hora, medicoId: Number(medicoId), motivo: motivo, estado: 'Programada', actualizadoPor: APP.currentUser, updatedAt: new Date().toISOString() };
+  try {
+    if (APP.editingId) {
+      data.id = APP.editingId;
+      await DB.put('agenda', data);
+    } else {
+      data.creadoPor = APP.currentUser;
+      data.createdAt = new Date().toISOString();
+      await DB.add('agenda', data);
+    }
+    closeModal();
+    APP.agendaSelectedDate = fecha;
+    APP.agendaMonth = new Date(Number(fecha.slice(0,4)), Number(fecha.slice(5,7))-1, 1);
+    await renderAgenda();
+  } catch (error) { alert('No se pudo guardar la cita: ' + error.message); }
+}
+
+async function cancelarCitaAgenda(id) {
+  if (!confirm('¿Cancelar esta cita? Se conservará en el historial.')) return;
+  const c = await DB.get('agenda', id);
+  if (!c) return;
+  c.estado = 'Cancelada';
+  c.actualizadoPor = APP.currentUser;
+  c.updatedAt = new Date().toISOString();
+  await DB.put('agenda', c);
+  renderAgenda();
+}
+
+// ========== CHAT INTERNO ==========
+async function renderChat() {
+  const area = document.getElementById('content-area');
+  area.innerHTML = '<div class="card chat-card"><div class="card-header"><div><h3>Chat del personal</h3><p class="text-muted">Comunicación interna de médicos, enfermería y personal autorizado.</p></div><span class="chat-live">● En línea</span></div>' +
+    '<div id="chat-messages" class="chat-messages"><div class="empty-state"><p>Cargando mensajes...</p></div></div>' +
+    '<form id="chat-form" class="chat-compose"><textarea id="chat-message" class="form-control" rows="2" maxlength="2000" placeholder="Escribe un mensaje para el equipo..." required></textarea>' +
+    '<button type="submit" class="btn btn-primary">Enviar mensaje</button></form>' +
+    '<p class="chat-note">No uses el chat para emergencias. Evita incluir información clínica identificable que no sea necesaria.</p></div>';
+  document.getElementById('chat-form').addEventListener('submit', enviarMensajeChat);
+  await actualizarChat();
+  APP.chatTimer = setInterval(function () {
+    if (APP.currentModule === 'chat') actualizarChat();
+  }, 5000);
+}
+
+async function actualizarChat() {
+  if (APP.currentModule !== 'chat') return;
+  try {
+    const messages = await DB.getAll('chat');
+    const box = document.getElementById('chat-messages');
+    if (!box) return;
+    const wasNearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 90;
+    box.innerHTML = messages.length ? messages.map(function (m) {
+      const own = m.senderUsername === APP.currentUser;
+      const roleNames = { admin: 'Administrador', medico: 'Médico', enfermeria: 'Enfermería', empleado: 'Personal' };
+      const date = m.createdAt ? new Date(m.createdAt).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }) : '';
+      return '<div class="chat-message' + (own ? ' chat-message-own' : '') + '"><div class="chat-message-meta"><strong>' + featureEscape(m.senderName) +
+        '</strong><span>' + featureEscape(roleNames[m.senderRole] || m.senderRole || 'Personal') + ' · ' + featureEscape(date) +
+        '</span></div><div class="chat-message-text">' + featureEscape(m.message).replace(/\n/g, '<br>') + '</div></div>';
+    }).join('') : '<div class="empty-state"><p>Aún no hay mensajes. Inicia la conversación del equipo.</p></div>';
+    if (wasNearBottom) box.scrollTop = box.scrollHeight;
+  } catch (error) {
+    console.error('Chat:', error);
+  }
+}
+
+async function enviarMensajeChat(event) {
+  event.preventDefault();
+  const input = document.getElementById('chat-message');
+  const message = input.value.trim();
+  if (!message) return;
+  const button = event.currentTarget.querySelector('button[type="submit"]');
+  button.disabled = true;
+  try {
+    await DB.sendChat(message);
+    input.value = '';
+    await actualizarChat();
+  } catch (error) {
+    alert('No se pudo enviar el mensaje: ' + error.message);
+  } finally { button.disabled = false; input.focus(); }
+}
+
+// ========== RECETA INDEPENDIENTE ==========
+async function renderRecetas() {
+  const area = document.getElementById('content-area');
+  const plantillas = await DB.getAll('plantillas_receta');
+  const recetas = (await DB.getAll('recetas')).sort(function (a,b) { return String(b.fecha || '').localeCompare(String(a.fecha || '')); });
+  const medicos = await DB.getAll(DB.STORES.medicos);
+  area.innerHTML = '<div class="card"><div class="card-header"><div><h3>Receta independiente</h3><p class="text-muted">Crea recetas sin necesidad de abrir una consulta.</p></div>' +
+    '<button class="btn btn-outline" onclick="openPlantillaRecetaModal()">+ Crear plantilla</button></div><div class="card-body">' +
+    '<div class="recipe-banner"><strong>Plantillas por médico</strong><span>Personaliza encabezado, datos profesionales, firma y pie de página. Elige la plantilla al preparar cada receta.</span></div>' +
+    '<div class="form-row"><div class="form-group"><label>Paciente *</label><input class="form-control" id="rec-paciente" placeholder="Nombre completo del paciente" required></div>' +
+    '<div class="form-group"><label>Fecha *</label><input class="form-control" id="rec-fecha" type="date" value="' + localDateString(new Date()) + '" required></div></div>' +
+    '<div class="form-row"><div class="form-group"><label>Médico *</label><select class="form-control" id="rec-medico"><option value="">Selecciona médico</option>' +
+    medicos.filter(function (m) { return m.activo !== false; }).map(function (m) { return '<option value="' + m.id + '">' + featureEscape(m.nombre) + ' — ' + featureEscape(m.especialidad || '') + '</option>'; }).join('') +
+    '</select></div><div class="form-group"><label>Plantilla para imprimir *</label><select class="form-control" id="rec-plantilla"><option value="">Selecciona plantilla</option>' +
+    plantillas.map(function (p) { return '<option value="' + p.id + '">' + featureEscape(p.nombre) + '</option>'; }).join('') +
+    '</select></div></div>' +
+    '<div class="form-group"><label>Diagnóstico / motivo</label><textarea class="form-control" id="rec-diagnostico" rows="2"></textarea></div>' +
+    '<div class="form-group"><label>Medicamento, presentación y concentración *</label><textarea class="form-control" id="rec-medicamento" rows="2" placeholder="Nombre y presentación" required></textarea></div>' +
+    '<div class="form-row"><div class="form-group"><label>Dosis y vía de administración</label><input class="form-control" id="rec-dosis" placeholder="Dosis y vía"></div>' +
+    '<div class="form-group"><label>Frecuencia</label><input class="form-control" id="rec-frecuencia" placeholder="Cada cuánto"></div></div>' +
+    '<div class="form-row"><div class="form-group"><label>Duración</label><input class="form-control" id="rec-duracion" placeholder="Duración indicada"></div>' +
+    '<div class="form-group"><label>Cantidad</label><input class="form-control" id="rec-cantidad" placeholder="Cantidad prescrita"></div></div>' +
+    '<div class="form-group"><label>Indicaciones adicionales</label><textarea class="form-control" id="rec-indicaciones" rows="3"></textarea></div>' +
+    '<button class="btn btn-primary" onclick="guardarRecetaIndependiente()">Guardar receta</button></div></div>' +
+    '<div class="card"><div class="card-header"><h3>Recetas guardadas</h3></div><div class="card-body">' +
+    (recetas.length ? '<div class="table-responsive"><table><thead><tr><th>Fecha</th><th>Paciente</th><th>Médico</th><th>Plantilla</th><th>Acciones</th></tr></thead><tbody>' +
+      recetas.map(function (r) {
+        const m = medicos.find(function (x) { return String(x.id) === String(r.medicoId); });
+        const p = plantillas.find(function (x) { return String(x.id) === String(r.plantillaId); });
+        return '<tr><td>' + featureEscape(r.fecha) + '</td><td>' + featureEscape(r.paciente) + '</td><td>' + featureEscape(m ? m.nombre : '—') +
+          '</td><td>' + featureEscape(p ? p.nombre : 'Plantilla eliminada') + '</td><td><button class="btn btn-primary btn-sm" onclick="imprimirRecetaIndependiente(' + Number(r.id) + ')">Vista previa / imprimir</button></td></tr>';
+      }).join('') + '</tbody></table></div>' : '<div class="empty-state"><p>Aún no hay recetas guardadas.</p></div>') + '</div></div>';
+}
+
+async function openPlantillaRecetaModal(id) {
+  APP.editingId = id || null;
+  const modal = document.getElementById('generic-modal');
+  const body = document.getElementById('modal-body');
+  const footer = document.getElementById('modal-footer');
+  const medicos = await DB.getAll(DB.STORES.medicos);
+  let p = { nombre: 'Receta médica', medicoId: '', encabezado: 'CONSULTORIO MÉDICO CC', pie: 'La receta debe ser validada y firmada por el médico tratante.', firma: '', domicilio: '', telefono: '' };
+  if (id) p = await DB.get('plantillas_receta', id) || p;
+  document.getElementById('modal-title').textContent = id ? 'Editar plantilla de receta' : 'Nueva plantilla de receta';
+  body.innerHTML = '<div class="form-group"><label>Nombre de la plantilla *</label><input class="form-control" id="pt-nombre" value="' + featureEscape(p.nombre) + '" required></div>' +
+    '<div class="form-group"><label>Médico titular *</label><select class="form-control" id="pt-medico"><option value="">Selecciona médico</option>' +
+    medicos.map(function (m) { return '<option value="' + m.id + '"' + (String(p.medicoId) === String(m.id) ? ' selected' : '') + '>' + featureEscape(m.nombre) + '</option>'; }).join('') +
+    '</select></div><div class="form-group"><label>Encabezado / nombre del consultorio</label><input class="form-control" id="pt-encabezado" value="' + featureEscape(p.encabezado || '') + '"></div>' +
+    '<div class="form-row"><div class="form-group"><label>Domicilio profesional</label><input class="form-control" id="pt-domicilio" value="' + featureEscape(p.domicilio || '') + '"></div>' +
+    '<div class="form-group"><label>Teléfono</label><input class="form-control" id="pt-telefono" value="' + featureEscape(p.telefono || '') + '"></div></div>' +
+    '<div class="form-group"><label>Texto de firma / cédula</label><textarea class="form-control" id="pt-firma" rows="2">' + featureEscape(p.firma || '') + '</textarea></div>' +
+    '<div class="form-group"><label>Pie de página</label><textarea class="form-control" id="pt-pie" rows="2">' + featureEscape(p.pie || '') + '</textarea></div>';
+  footer.innerHTML = '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="guardarPlantillaReceta()">Guardar plantilla</button>';
+  modal.classList.add('show');
+}
+
+async function guardarPlantillaReceta() {
+  const nombre = document.getElementById('pt-nombre').value.trim();
+  const medicoId = document.getElementById('pt-medico').value;
+  if (!nombre || !medicoId) return alert('Indica el nombre de la plantilla y el médico titular.');
+  const data = {
+    nombre: nombre, medicoId: Number(medicoId),
+    encabezado: document.getElementById('pt-encabezado').value.trim(),
+    domicilio: document.getElementById('pt-domicilio').value.trim(),
+    telefono: document.getElementById('pt-telefono').value.trim(),
+    firma: document.getElementById('pt-firma').value.trim(),
+    pie: document.getElementById('pt-pie').value.trim(),
+    actualizadoPor: APP.currentUser, updatedAt: new Date().toISOString()
+  };
+  try {
+    if (APP.editingId) { data.id = APP.editingId; await DB.put('plantillas_receta', data); }
+    else { data.createdAt = new Date().toISOString(); await DB.add('plantillas_receta', data); }
+    closeModal();
+    await renderRecetas();
+  } catch (error) { alert('No se pudo guardar la plantilla: ' + error.message); }
+}
+
+async function guardarRecetaIndependiente() {
+  const paciente = document.getElementById('rec-paciente').value.trim();
+  const fecha = document.getElementById('rec-fecha').value;
+  const medicoId = document.getElementById('rec-medico').value;
+  const plantillaId = document.getElementById('rec-plantilla').value;
+  const medicamento = document.getElementById('rec-medicamento').value.trim();
+  if (!paciente || !fecha || !medicoId || !plantillaId || !medicamento) {
+    return alert('Completa paciente, fecha, médico, plantilla y medicamento.');
+  }
+  const data = {
+    paciente: paciente, fecha: fecha, medicoId: Number(medicoId), plantillaId: Number(plantillaId),
+    diagnostico: document.getElementById('rec-diagnostico').value.trim(),
+    medicamento: medicamento, dosis: document.getElementById('rec-dosis').value.trim(),
+    frecuencia: document.getElementById('rec-frecuencia').value.trim(),
+    duracion: document.getElementById('rec-duracion').value.trim(),
+    cantidad: document.getElementById('rec-cantidad').value.trim(),
+    indicaciones: document.getElementById('rec-indicaciones').value.trim(),
+    elaboradoPor: APP.currentUser, createdAt: new Date().toISOString()
+  };
+  try {
+    const saved = await DB.add('recetas', data);
+    alert('Receta guardada. Puedes abrirla para revisar e imprimir.');
+    await renderRecetas();
+    if (saved && saved.id) imprimirRecetaIndependiente(saved.id);
+  } catch (error) { alert('No se pudo guardar la receta: ' + error.message); }
+}
+
+async function imprimirRecetaIndependiente(id) {
+  const r = await DB.get('recetas', id);
+  if (!r) return alert('No se encontró la receta.');
+  const plantillas = await DB.getAll('plantillas_receta');
+  const medicos = await DB.getAll(DB.STORES.medicos);
+  const p = plantillas.find(function (x) { return String(x.id) === String(r.plantillaId); });
+  const m = medicos.find(function (x) { return String(x.id) === String(r.medicoId); });
+  if (!p) return alert('La plantilla guardada ya no existe. Selecciona una plantilla y crea una receta nueva.');
+  const field = function (label, value) {
+    return value ? '<p style="margin:10px 0"><strong>' + featureEscape(label) + ':</strong> ' + featureEscape(value) + '</p>' : '';
+  };
+  const printArea = document.getElementById('print-area');
+  printArea.innerHTML = '<article class="rx-print" style="font-family:Arial,sans-serif;color:#182235;max-width:760px;margin:0 auto;padding:30px">' +
+    '<header style="border-bottom:2px solid #1d4ed8;padding-bottom:16px;margin-bottom:22px"><h1 style="font-size:25px;margin:0 0 8px">' + featureEscape(p.encabezado || 'RECETA MÉDICA') +
+    '</h1><h2 style="font-size:18px;margin:0">' + featureEscape(m ? m.nombre : 'Médico') + '</h2><p style="margin:5px 0">' + featureEscape(m ? m.especialidad || '' : '') +
+    '</p><p style="margin:4px 0">Cédula profesional: ' + featureEscape(m ? m.cedula || '—' : '—') + '</p>' +
+    '<p style="margin:4px 0">' + featureEscape(p.domicilio || '') + ' ' + featureEscape(p.telefono || '') + '</p></header>' +
+    '<div style="display:flex;justify-content:space-between;gap:20px;margin-bottom:18px"><h3 style="margin:0">RECETA MÉDICA</h3><span>Fecha: ' + featureEscape(r.fecha) + '</span></div>' +
+    '<p style="font-size:17px;border-bottom:1px solid #cbd5e1;padding-bottom:12px"><strong>Paciente:</strong> ' + featureEscape(r.paciente) + '</p>' +
+    field('Diagnóstico / motivo', r.diagnostico) + '<div style="border:1px solid #cbd5e1;border-radius:8px;padding:18px;margin:22px 0;min-height:130px">' +
+    '<h3 style="margin:0 0 14px">Rp.</h3><p style="font-size:17px;margin:0 0 10px"><strong>' + featureEscape(r.medicamento) + '</strong></p>' +
+    field('Dosis y vía', r.dosis) + field('Frecuencia', r.frecuencia) + field('Duración', r.duracion) + field('Cantidad', r.cantidad) + '</div>' +
+    field('Indicaciones', r.indicaciones) + '<div style="margin-top:80px;text-align:center"><div style="border-top:1px solid #334155;width:260px;margin:0 auto 8px"></div>' +
+    '<p style="margin:0;font-weight:bold">' + featureEscape(p.firma || (m ? m.nombre : 'Firma del médico')) + '</p><p style="margin:3px 0">Cédula: ' + featureEscape(m ? m.cedula || '—' : '—') + '</p></div>' +
+    '<footer style="margin-top:35px;border-top:1px solid #cbd5e1;padding-top:10px;font-size:11px;color:#475569">' + featureEscape(p.pie || '') + '</footer></article>';
+  window.print();
+}
+
+// ========== CUENTAS DEL PERSONAL ==========
+async function renderPersonal() {
+  if (APP.currentRole !== 'admin') return alert('Solo el administrador puede gestionar accesos.');
+  const area = document.getElementById('content-area');
+  const users = await DB.getAll('personal');
+  area.innerHTML = '<div class="card"><div class="card-header"><div><h3>Cuentas del personal</h3><p class="text-muted">Crea un acceso individual para cada médico, enfermería o empleado.</p></div></div>' +
+    '<div class="card-body"><form id="staff-form"><div class="form-row"><div class="form-group"><label>Nombre para mostrar *</label><input class="form-control" id="staff-name" required></div>' +
+    '<div class="form-group"><label>Usuario de acceso *</label><input class="form-control" id="staff-username" minlength="3" maxlength="40" pattern="[A-Za-z0-9._-]+" required></div></div>' +
+    '<div class="form-row"><div class="form-group"><label>Rol *</label><select class="form-control" id="staff-role"><option value="medico">Médico</option><option value="enfermeria">Enfermería</option><option value="empleado">Personal / recepción</option></select></div>' +
+    '<div class="form-group"><label>Contraseña inicial (mínimo 10 caracteres) *</label><input class="form-control" id="staff-password" type="password" minlength="10" autocomplete="new-password" required></div></div>' +
+    '<button class="btn btn-primary" type="submit">Crear cuenta</button><p class="text-muted staff-help">Entrega la contraseña de forma privada y usa una contraseña única por persona.</p></form></div></div>' +
+    '<div class="card"><div class="card-header"><h3>Usuarios registrados</h3></div><div class="card-body">' +
+    (users.length ? '<div class="table-responsive"><table><thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Estado</th><th>Acción</th></tr></thead><tbody>' +
+      users.map(function (u) {
+        const roles = { medico: 'Médico', enfermeria: 'Enfermería', empleado: 'Personal' };
+        return '<tr><td>' + featureEscape(u.displayName) + '</td><td>' + featureEscape(u.username) + '</td><td>' + featureEscape(roles[u.role] || u.role) +
+          '</td><td>' + (u.active ? 'Activo' : 'Desactivado') + '</td><td><button class="btn ' + (u.active ? 'btn-danger' : 'btn-success') +
+          ' btn-sm" onclick="cambiarEstadoPersonal(' + Number(u.id) + ',' + (!u.active) + ')">' + (u.active ? 'Desactivar' : 'Activar') + '</button></td></tr>';
+      }).join('') + '</tbody></table></div>' : '<div class="empty-state"><p>Aún no hay cuentas adicionales. La cuenta administradora se configura en Render.</p></div>') +
+    '</div></div>';
+  document.getElementById('staff-form').addEventListener('submit', crearCuentaPersonal);
+}
+
+async function crearCuentaPersonal(event) {
+  event.preventDefault();
+  const data = {
+    displayName: document.getElementById('staff-name').value.trim(),
+    username: document.getElementById('staff-username').value.trim(),
+    role: document.getElementById('staff-role').value,
+    password: document.getElementById('staff-password').value
+  };
+  try {
+    await DB.addStaffUser(data);
+    alert('Cuenta creada. El usuario ya puede iniciar sesión.');
+    await renderPersonal();
+  } catch (error) { alert('No se pudo crear la cuenta: ' + error.message); }
+}
+
+async function cambiarEstadoPersonal(id, active) {
+  if (!confirm(active ? '¿Activar esta cuenta?' : '¿Desactivar esta cuenta?')) return;
+  try {
+    await DB.setStaffActive(id, active);
+    await renderPersonal();
+  } catch (error) { alert('No se pudo actualizar la cuenta: ' + error.message); }
+}
+
 function escEnf(valor) {
   return String(valor).replace(/[&<>"']/g, caracter => ({
     '&': '&amp;',
