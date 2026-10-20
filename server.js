@@ -714,6 +714,13 @@ app.post('/api/cobros/:id/confirmar', requireAuth, async (req, res, next) => {
   }
 });
 
+app.get('/api/balance/cobros', requireAuth, requireAdmin, (req, res, next) => {
+  if (!validFinanceToken(req, 'balance')) return res.status(403).json({ error: 'Ingresa el código de Balance para consultar el balance.' });
+  pool.query("SELECT data FROM app_records WHERE store='cobros' ORDER BY (data->>'fecha') DESC")
+    .then(result => res.json(result.rows.map(row => row.data)))
+    .catch(next);
+});
+
 app.get(
   '/api/data/:store',
   requireAuth,
