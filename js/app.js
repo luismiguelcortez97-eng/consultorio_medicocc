@@ -8,7 +8,7 @@ const APP = {
   currentModule: 'dashboard',
   chatTimer: null,
   agendaMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-  agendaSelectedDate: new Date().toISOString().slice(0, 10),
+  agendaSelectedDate: localDateString(new Date()),
   editingId: null,
   tempConsulta: null, // for building consultation
   unlockedCobros: false,
@@ -269,7 +269,8 @@ async function renderDashboard() {
       <div class="stat-card">
         <div class="stat-icon purple">💰</div>
         <div class="stat-info">
-          <h4>${APP.currentRole === 'admin' ? '
+          <h4>${APP.currentRole === 'admin' ? String.fromCharCode(36) + totalHoy.toFixed(2) : '—'}</h4>
+          <p>${APP.currentRole === 'admin' ? 'Cobrado hoy' : 'Dato reservado'}</p>
         </div>
       </div>
     </div>
