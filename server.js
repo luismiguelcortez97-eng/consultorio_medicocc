@@ -521,32 +521,33 @@ app.post('/api/auth/verify-nip', requireAuth, (req, res) => {
 app.get('/api/dashboard/cobros-hoy', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const fecha = String(req.query.fecha || '');
+    const offsetMinutos = Number(req.query.offsetMinutos);
 
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
-      return res.status(400).json({
-        error: 'Fecha inválida.'
-      });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) ||
+        !Number.isInteger(offsetMinutos) || offsetMinutos < -840 || offsetMinutos > 840) {
+      return res.status(400).json({ error: 'Fecha o zona horaria inválida.' });
     }
 
-    const result = await pool.query(
-      "SELECT data FROM app_records WHERE store='cobros'"
-    );
-
-    const cobros = result.rows
+    // El navegador envía la fecha local y su desfase respecto a UTC.
+    const [anio, mes, dia] = fecha.split('-').map(Number);
+    const inicioUTC = Date.UTC(anio, mes - 1, dia) + offsetMinutos * 60000;
+    const finUTC = inicioUTC + 24 * 60 * 60 * 1000;
+    const result = await pool.query("SELECT data FROM app_records WHERE store='cobros'");
+    const cobrosPagadosHoy = result.rows
       .map(row => row.data)
-      .filter(
-        cobro =>
-          cobro.fecha &&
-          String(cobro.fecha).startsWith(fecha) &&
-          cobro.status === 'pagado'
-      );
+      .filter(cobro => {
+        if (cobro.status !== 'pagado') return false;
+        const fechaPago = cobro.cobradoAt || cobro.fecha;
+        if (!fechaPago) return false;
+        const instante = new Date(fechaPago).getTime();
+        return Number.isFinite(instante) && instante >= inicioUTC && instante < finUTC;
+      });
 
-    const total = cobros.reduce(
+    const total = cobrosPagadosHoy.reduce(
       (sum, cobro) => sum + (Number.parseFloat(cobro.monto) || 0),
       0
     );
-
-    res.json({ total, count: cobros.length });
+    res.json({ total, count: cobrosPagadosHoy.length });
   } catch (error) {
     next(error);
   }
