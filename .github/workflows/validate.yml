@@ -1,4 +1,5 @@
 name: Validate JavaScript
+# Validate server and browser scripts before merging
 on:
   push:
     branches:
