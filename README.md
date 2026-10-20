@@ -41,3 +41,13 @@ Abra `http://localhost:3000`.
 ## Datos y respaldos
 
 Los datos se guardan en PostgreSQL. El respaldo JSON se descarga desde el módulo Respaldos. Guarde copias en una ubicación segura y limite su acceso: pueden contener datos de salud y financieros.
+
+
+## Nuevos módulos propuestos en la rama de funciones
+
+- **Chat del personal:** mensajes persistentes con nombre y rol tomados de la sesión autenticada.
+- **Agenda mensual:** calendario, citas por paciente/médico, prevención de doble cita para un mismo médico y cancelación con historial.
+- **Receta independiente:** plantillas configurables por médico, receta guardada y vista previa de impresión.
+- **Cuentas del personal:** el administrador puede crear y desactivar usuarios con contraseñas almacenadas mediante scrypt. Los datos financieros quedan restringidos al administrador.
+
+Antes de utilizar estos módulos con datos reales, valida el flujo completo en el entorno de despliegue. Las cuentas de personal comparten todavía la mayor parte de los módulos clínicos; esto no equivale a permisos granulares por paciente o por expediente. No utilices el sistema como único canal para urgencias clínicas y evita enviar datos identificables de salud por el chat si no son necesarios.

@@ -19,7 +19,10 @@ const STORES = new Set([
   'cobros',
   'config',
   'enfermeria',
-  'empleados'
+  'empleados',
+  'agenda',
+  'plantillas_receta',
+  'recetas'
 ]);
 
 const pool = new Pool({
@@ -54,6 +57,30 @@ app.use(express.json({ limit: '5mb' }));
 
 async function initDb() {
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id BIGSERIAL PRIMARY KEY,
+      sender_username TEXT NOT NULL,
+      sender_name TEXT NOT NULL,
+      sender_role TEXT NOT NULL,
+      message TEXT NOT NULL CHECK (char_length(message) BETWEEN 1 AND 2000),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query('CREATE INDEX IF NOT EXISTS chat_messages_created_idx ON chat_messages(created_at DESC)');
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS staff_users (
+      id BIGSERIAL PRIMARY KEY,
+      username TEXT NOT NULL UNIQUE,
+      display_name TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('medico', 'enfermeria', 'empleado')),
+      password_hash TEXT NOT NULL,
+      password_salt TEXT NOT NULL,
+      active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS app_records (
       store TEXT NOT NULL,
       record_key TEXT NOT NULL,
@@ -82,10 +109,12 @@ function sign(value) {
     .digest('hex');
 }
 
-function createToken(username) {
+function createToken(username, role = 'admin', displayName = username) {
   const payload = Buffer.from(
     JSON.stringify({
       username,
+      role,
+      displayName,
       exp: Date.now() + 8 * 60 * 60 * 1000
     })
   ).toString('base64url');
@@ -138,6 +167,7 @@ function requireAuth(req, res, next) {
   }
 
   req.user = session.username;
+  req.session = session;
   next();
 }
 
@@ -187,6 +217,9 @@ function validFinanceToken(req, scope) {
 
 
 function requireFinanceWrite(req, res, next) {
+  if (req.session?.role !== 'admin') {
+    return res.status(403).json({ error: 'Solo administración puede modificar los registros financieros.' });
+  }
   if (
     !validFinanceToken(req, 'cobros') &&
     !validFinanceToken(req, 'balance')
@@ -200,6 +233,9 @@ function requireFinanceWrite(req, res, next) {
 }
 
 function requireFinanceRead(req, res, next) {
+  if (req.session?.role !== 'admin') {
+    return res.status(403).json({ error: 'Solo administración puede consultar los registros financieros.' });
+  }
   if (
     !validFinanceToken(req, 'cobros') &&
     !validFinanceToken(req, 'balance')
@@ -230,64 +266,151 @@ const loginLimiter = rateLimit({
   }
 });
 
-app.post('/api/auth/login', loginLimiter, (req, res) => {
-  const { username, password } = req.body || {};
+function hashStaffPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
+  return {
+    salt,
+    hash: crypto.scryptSync(password, salt, 64).toString('hex')
+  };
+}
 
-  const expectedUser = Buffer.from(
-    String(process.env.ADMIN_USERNAME).padEnd(256, '\0').slice(0, 256)
-  );
-
-  const suppliedUser = Buffer.from(
-    (typeof username === 'string' ? username : '')
-      .padEnd(256, '\0')
-      .slice(0, 256)
-  );
-
-  const userOk = crypto.timingSafeEqual(expectedUser, suppliedUser);
-
-  const expectedPassword = Buffer.from(
-    String(process.env.ADMIN_PASSWORD)
-  );
-
-  const suppliedPassword = Buffer.from(
-    typeof password === 'string' ? password : ''
-  );
-
-  const passOk =
-    expectedPassword.length === suppliedPassword.length &&
-    crypto.timingSafeEqual(expectedPassword, suppliedPassword);
-
-  if (!userOk || !passOk) {
-    return res.status(401).json({
-      error: 'Usuario o contraseña incorrectos.'
-    });
+function verifyStaffPassword(password, salt, storedHash) {
+  try {
+    const expected = Buffer.from(storedHash, 'hex');
+    const actual = crypto.scryptSync(password, salt, 64);
+    return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+  } catch {
+    return false;
   }
+}
 
-  res.cookie(
-    'cmcc_session',
-    createToken(process.env.ADMIN_USERNAME),
-    {
+function requireAdmin(req, res, next) {
+  if (req.session?.role !== 'admin') {
+    return res.status(403).json({ error: 'Solo el administrador puede gestionar accesos del personal.' });
+  }
+  next();
+}
+
+app.post('/api/auth/login', loginLimiter, async (req, res, next) => {
+  try {
+    const { username, password } = req.body || {};
+    const suppliedUserText = typeof username === 'string' ? username.trim() : '';
+    const suppliedPasswordText = typeof password === 'string' ? password : '';
+
+    const expectedUser = Buffer.from(
+      String(process.env.ADMIN_USERNAME).padEnd(256, '\\0').slice(0, 256)
+    );
+    const suppliedUser = Buffer.from(
+      suppliedUserText.padEnd(256, '\\0').slice(0, 256)
+    );
+    const userOk = crypto.timingSafeEqual(expectedUser, suppliedUser);
+    const expectedPassword = Buffer.from(String(process.env.ADMIN_PASSWORD));
+    const suppliedPassword = Buffer.from(suppliedPasswordText);
+    const passOk = expectedPassword.length === suppliedPassword.length &&
+      crypto.timingSafeEqual(expectedPassword, suppliedPassword);
+
+    let sessionUser = null;
+    if (userOk && passOk) {
+      sessionUser = {
+        username: process.env.ADMIN_USERNAME,
+        displayName: process.env.ADMIN_USERNAME,
+        role: 'admin'
+      };
+    } else if (suppliedUserText && suppliedPasswordText) {
+      const found = await pool.query(
+        'SELECT id, username, display_name, role, password_hash, password_salt, active FROM staff_users WHERE LOWER(username)=LOWER($1)',
+        [suppliedUserText]
+      );
+      const staff = found.rows[0];
+      if (staff && staff.active && verifyStaffPassword(suppliedPasswordText, staff.password_salt, staff.password_hash)) {
+        sessionUser = {
+          username: staff.username,
+          displayName: staff.display_name,
+          role: staff.role
+        };
+      }
+    }
+
+    if (!sessionUser) {
+      return res.status(401).json({ error: 'Usuario o contraseña incorrectos.' });
+    }
+
+    res.cookie('cmcc_session', createToken(sessionUser.username, sessionUser.role, sessionUser.displayName), {
       httpOnly: true,
       secure: isProd,
       sameSite: 'strict',
       maxAge: 8 * 60 * 60 * 1000,
       path: '/'
-    }
-  );
-
-  res.json({ username: process.env.ADMIN_USERNAME });
+    });
+    res.json(sessionUser);
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.get('/api/auth/me', (req, res) => {
   const session = getSession(req);
-
   if (!session) {
-    return res.status(401).json({
-      error: 'No hay sesión activa.'
-    });
+    return res.status(401).json({ error: 'No hay sesión activa.' });
   }
+  res.json({
+    username: session.username,
+    displayName: session.displayName || session.username,
+    role: session.role || 'admin'
+  });
+});
 
-  res.json({ username: session.username });
+app.get('/api/staff-users', requireAuth, requireAdmin, async (_req, res, next) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, username, display_name AS "displayName", role, active, created_at AS "createdAt" FROM staff_users ORDER BY display_name'
+    );
+    res.json(result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/staff-users', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const { username, displayName, role, password } = req.body || {};
+    const cleanUsername = typeof username === 'string' ? username.trim() : '';
+    const cleanName = typeof displayName === 'string' ? displayName.trim() : '';
+    if (!/^[a-zA-Z0-9._-]{3,40}$/.test(cleanUsername) || cleanName.length < 2 ||
+        !['medico', 'enfermeria', 'empleado'].includes(role) ||
+        typeof password !== 'string' || password.length < 10) {
+      return res.status(400).json({
+        error: 'Revisa los datos. Usuario: 3-40 caracteres; contraseña: mínimo 10; elige un rol válido.'
+      });
+    }
+    const credentials = hashStaffPassword(password);
+    const result = await pool.query(
+      'INSERT INTO staff_users(username, display_name, role, password_hash, password_salt) VALUES($1,$2,$3,$4,$5) RETURNING id, username, display_name AS "displayName", role, active',
+      [cleanUsername, cleanName, role, credentials.hash, credentials.salt]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    if (error.code === '23505') {
+      return res.status(409).json({ error: 'Ese nombre de usuario ya existe.' });
+    }
+    next(error);
+  }
+});
+
+app.patch('/api/staff-users/:id', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id < 1 || typeof req.body?.active !== 'boolean') {
+      return res.status(400).json({ error: 'Solicitud inválida.' });
+    }
+    const result = await pool.query(
+      'UPDATE staff_users SET active=$1 WHERE id=$2 RETURNING id, username, display_name AS "displayName", role, active',
+      [req.body.active, id]
+    );
+    if (!result.rowCount) return res.status(404).json({ error: 'Usuario no encontrado.' });
+    res.json(result.rows[0]);
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.post('/api/auth/logout', (_req, res) => {
@@ -349,7 +472,7 @@ app.post('/api/auth/verify-nip', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/api/dashboard/cobros-hoy', requireAuth, async (req, res, next) => {
+app.get('/api/dashboard/cobros-hoy', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const fecha = String(req.query.fecha || '');
 
@@ -378,6 +501,35 @@ app.get('/api/dashboard/cobros-hoy', requireAuth, async (req, res, next) => {
     );
 
     res.json({ total, count: cobros.length });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/chat', requireAuth, async (_req, res, next) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, sender_username AS "senderUsername", sender_name AS "senderName", sender_role AS "senderRole", message, created_at AS "createdAt" FROM chat_messages ORDER BY id DESC LIMIT 300'
+    );
+    res.json(result.rows.reverse());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/chat', requireAuth, async (req, res, next) => {
+  try {
+    const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+    if (!message || message.length > 2000) {
+      return res.status(400).json({ error: 'El mensaje debe tener entre 1 y 2000 caracteres.' });
+    }
+    const role = req.session?.role || 'admin';
+    const displayName = req.session?.displayName || req.session?.username || 'Usuario';
+    const result = await pool.query(
+      'INSERT INTO chat_messages(sender_username, sender_name, sender_role, message) VALUES($1,$2,$3,$4) RETURNING id, sender_username AS "senderUsername", sender_name AS "senderName", sender_role AS "senderRole", message, created_at AS "createdAt"',
+      [req.session?.username || 'admin', displayName, role, message]
+    );
+    res.status(201).json(result.rows[0]);
   } catch (error) {
     next(error);
   }
