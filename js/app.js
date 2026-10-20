@@ -46,6 +46,9 @@ function setupEventListeners() {
   document.querySelectorAll('.nav-item').forEach(item => {
     item.addEventListener('click', () => {
       const module = item.dataset.module;
+      // En Safari/iPhone, cerrar el menú lateral al elegir cualquier apartado.
+      const sidebar = document.querySelector('.sidebar');
+      if (sidebar) sidebar.classList.remove('open');
       if (module) navigateTo(module);
     });
   });
