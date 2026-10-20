@@ -1603,13 +1603,17 @@ async function marcarPagado(id) {
   const c = await DB.get(DB.STORES.cobros, id);
   if (!c) return;
   if (c.status === 'pagado') return alert('Este cobro ya está pagado.');
+  const monto = Number(c.monto);
+  if (!Number.isFinite(monto) || monto <= 0 || monto > 10000000) {
+    return alert('El importe de este cobro es inválido. Edita el cobro y registra un importe mayor que $0 antes de confirmarlo.');
+  }
   const metodoPago = prompt('Confirma el método de pago:\n1 = Efectivo\n2 = Tarjeta\n3 = Transferencia', '1');
   if (metodoPago === null) return;
   const metodos = { '1': 'Efectivo', '2': 'Tarjeta', '3': 'Transferencia' };
   if (!metodos[metodoPago]) return alert('Selecciona 1, 2 o 3 para registrar un método válido.');
-  if (!confirm('¿Confirmar el cobro de $' + (Number(c.monto) || 0).toFixed(2) + ' por ' + metodos[metodoPago] + '?')) return;
+  if (!confirm('¿Confirmar el cobro de $' + monto.toFixed(2) + ' por ' + metodos[metodoPago] + '?')) return;
   try {
-    await DB.confirmarCobro(id, metodos[metodoPago]);
+    await DB.confirmarCobro(id, metodos[metodoPago], monto);
     alert('Cobro confirmado correctamente.');
     await renderCobros();
   } catch (error) {
