@@ -1697,3 +1697,230 @@ window.closeNipModal = closeNipModal;
 window.exportData = exportData;
 window.importData = importData;
 window.logout = logout;
+
+/* ========== MÓDULO DE ENFERMERÍA ========== */
+
+async function renderEnfermeria() {
+  const area = document.getElementById('content-area');
+
+  if (!area) {
+    alert('No se encontró el área de contenido.');
+    return;
+  }
+
+  try {
+    const registros = await DB.getAll('enfermeria');
+
+    registros.sort((a, b) =>
+      String(b.fechaHora || '').localeCompare(String(a.fechaHora || ''))
+    );
+
+    area.innerHTML = `
+      <div class="card">
+        <h3>Registro de enfermería y signos vitales</h3>
+
+        <form id="form-enfermeria">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Nombre del paciente</label>
+              <input class="form-control" name="paciente" required>
+            </div>
+
+            <div class="form-group">
+              <label>Responsable de enfermería</label>
+              <input class="form-control" name="responsable" required>
+            </div>
+
+            <div class="form-group">
+              <label>Presión arterial</label>
+              <input class="form-control" name="presion"
+                     placeholder="120/80" required>
+            </div>
+
+            <div class="form-group">
+              <label>Frecuencia cardíaca (lpm)</label>
+              <input class="form-control" name="fc"
+                     type="number" min="1" required>
+            </div>
+
+            <div class="form-group">
+              <label>Frecuencia respiratoria (rpm)</label>
+              <input class="form-control" name="fr"
+                     type="number" min="1" required>
+            </div>
+
+            <div class="form-group">
+              <label>Temperatura (°C)</label>
+              <input class="form-control" name="temperatura"
+                     type="number" min="25" max="45"
+                     step="0.1" required>
+            </div>
+
+            <div class="form-group">
+              <label>Peso (kg)</label>
+              <input class="form-control" name="peso"
+                     type="number" min="0.1" max="500"
+                     step="0.1" required>
+            </div>
+
+            <div class="form-group">
+              <label>Talla (cm)</label>
+              <input class="form-control" name="talla"
+                     type="number" min="20" max="250"
+                     step="0.1" required>
+            </div>
+
+            <div class="form-group">
+              <label>Saturación de oxígeno (%)</label>
+              <input class="form-control" name="spo2"
+                     type="number" min="1" max="100" required>
+            </div>
+
+            <div class="form-group">
+              <label>Observaciones</label>
+              <input class="form-control" name="observaciones">
+            </div>
+          </div>
+
+          <p id="imc-preview">
+            IMC: complete el peso y la talla.
+          </p>
+
+          <button class="btn btn-primary" type="submit">
+            Guardar registro
+          </button>
+        </form>
+      </div>
+
+      <div class="card" style="margin-top:1rem">
+        <h3>Historial de enfermería</h3>
+
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Fecha y hora</th>
+                <th>Paciente</th>
+                <th>Responsable</th>
+                <th>Presión arterial</th>
+                <th>FC</th>
+                <th>FR</th>
+                <th>Temperatura</th>
+                <th>Peso</th>
+                <th>Talla</th>
+                <th>IMC</th>
+                <th>SpO₂</th>
+                <th>Observaciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${registros.map(r => `
+                <tr>
+                  <td>${escEnf(r.fechaHora || '')}</td>
+                  <td>${escEnf(r.paciente || '')}</td>
+                  <td>${escEnf(r.responsable || '')}</td>
+                  <td>${escEnf(r.presion || '')}</td>
+                  <td>${escEnf(r.fc ?? '')}</td>
+                  <td>${escEnf(r.fr ?? '')}</td>
+                  <td>${escEnf(r.temperatura ?? '')} °C</td>
+                  <td>${escEnf(r.peso ?? '')} kg</td>
+                  <td>${escEnf(r.talla ?? '')} cm</td>
+                  <td>${escEnf(r.imc ?? '')}</td>
+                  <td>${escEnf(r.spo2 ?? '')}%</td>
+                  <td>${escEnf(r.observaciones || '')}</td>
+                </tr>
+              `).join('') || `
+                <tr>
+                  <td colspan="12">Todavía no hay registros.</td>
+                </tr>
+              `}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    const form = document.getElementById('form-enfermeria');
+    const peso = form.elements.peso;
+    const talla = form.elements.talla;
+
+    function actualizarIMC() {
+      const p = Number(peso.value);
+      const t = Number(talla.value) / 100;
+      const imc = p > 0 && t > 0
+        ? (p / (t * t)).toFixed(2)
+        : '';
+
+      document.getElementById('imc-preview').textContent =
+        imc ? `IMC calculado: ${imc}` :
+        'IMC: complete el peso y la talla.';
+    }
+
+    peso.addEventListener('input', actualizarIMC);
+    talla.addEventListener('input', actualizarIMC);
+
+    form.addEventListener('submit', guardarEnfermeria);
+
+  } catch (error) {
+    console.error('Error al abrir enfermería:', error);
+    area.innerHTML = `
+      <div class="card">
+        <h3>No se pudo abrir Enfermería</h3>
+        <p>${escEnf(error.message || 'Error desconocido')}</p>
+      </div>
+    `;
+  }
+}
+
+async function guardarEnfermeria(event) {
+  event.preventDefault();
+
+  const form = event.currentTarget;
+  const datos = new FormData(form);
+
+  const peso = Number(datos.get('peso'));
+  const talla = Number(datos.get('talla'));
+  const tallaM = talla / 100;
+
+  if (!(peso > 0 && tallaM > 0)) {
+    alert('Verifica el peso y la talla.');
+    return;
+  }
+
+  const registro = {
+    paciente: String(datos.get('paciente') || '').trim(),
+    responsable: String(datos.get('responsable') || '').trim(),
+    presion: String(datos.get('presion') || '').trim(),
+    fc: Number(datos.get('fc')),
+    fr: Number(datos.get('fr')),
+    temperatura: Number(datos.get('temperatura')),
+    peso,
+    talla,
+    imc: Number((peso / (tallaM * tallaM)).toFixed(2)),
+    spo2: Number(datos.get('spo2')),
+    observaciones: String(datos.get('observaciones') || '').trim(),
+    fechaHora: new Date().toISOString()
+  };
+
+  try {
+    await DB.add('enfermeria', registro);
+    alert('Registro de enfermería guardado.');
+    await renderEnfermeria();
+  } catch (error) {
+    console.error('Error al guardar enfermería:', error);
+    alert(
+      'No se pudo guardar el registro. Verifica la configuración del servidor: ' +
+      error.message
+    );
+  }
+}
+
+function escEnf(valor) {
+  return String(valor).replace(/[&<>"']/g, caracter => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[caracter]);
+}
