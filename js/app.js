@@ -1013,12 +1013,10 @@ async function registrarCobroConsulta(consultaId) {
     const medico = await DB.get(DB.STORES.medicos, consulta.medicoId);
 
     if (consulta.cobroId) {
-      const existing = await DB.get(DB.STORES.cobros, consulta.cobroId);
-      if (existing) {
-        alert('Esta consulta ya fue enviada a cobros. Estado: ' + (existing.status === 'pagado' ? 'PAGADO' : 'PENDIENTE') +
-          '. Importe: $' + (Number(existing.monto) || 0).toFixed(2));
-        return;
-      }
+      alert('Esta consulta ya fue enviada al área de cobros. Importe registrado: $' +
+        (Number(consulta.montoConsulta) || 0).toFixed(2) +
+        '. Recepción puede consultar el estado y confirmar el pago desde Cobros.');
+      return;
     }
 
     const sugerido = consulta.montoConsulta != null
