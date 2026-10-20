@@ -2119,6 +2119,7 @@ async function importData(event) {
 
 // ========== PRINT RECETA ==========
 async function imprimirReceta(consultaId) {
+  try {
   const c = await DB.get(DB.STORES.consultas, consultaId);
   if (!c) return;
   const p = await DB.get(DB.STORES.pacientes, c.pacienteId);
@@ -2216,9 +2217,14 @@ async function imprimirReceta(consultaId) {
     </div>
   `;
 
+  if (!printArea) throw new Error('No existe el área de impresión en la página.');
   window.print();
   if (confirm('Receta preparada. ¿Deseas registrar ahora el cobro de esta consulta?')) {
     await registrarCobroConsulta(consultaId);
+  }
+  } catch (error) {
+    console.error('Error al imprimir receta desde Consultas:', error);
+    alert('No se pudo imprimir la receta: ' + (error && error.message ? error.message : 'error inesperado') + '. Recarga la página e inténtalo de nuevo.');
   }
 }
 
