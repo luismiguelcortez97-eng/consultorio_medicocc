@@ -140,6 +140,7 @@ async function get(storeName, id) {
 
 async function getAll(storeName) {
   if (storeName === 'chat') return api('/api/chat');
+  if (storeName === 'balance_cobros') return api('/api/balance/cobros');
   if (storeName === 'personal') return api('/api/staff-users');
   return api(`/api/data/${encodeURIComponent(storeName)}`);
 }
