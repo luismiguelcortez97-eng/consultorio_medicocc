@@ -799,9 +799,31 @@ body.tema-suave {
   .agenda-toolbar h3 { width: 100%; text-align: center; order: -1; }
 }
 @media print {
+  /* Texto negro intenso para mejorar la legibilidad de la receta impresa. */
   body * { visibility: hidden !important; }
-  #print-area, #print-area * { visibility: visible !important; }
-  #print-area { display: block !important; position: absolute; inset: 0; width: 100%; background: white; }
+  #print-area, #print-area * {
+    visibility: visible !important;
+    color: #000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  #print-area {
+    display: block !important;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    background: #fff !important;
+    color: #000 !important;
+  }
+  #print-area p, #print-area span, #print-area div, #print-area h1,
+  #print-area h2, #print-area h3, #print-area h4, #print-area strong,
+  #print-area td, #print-area th, #print-area li, #print-area footer {
+    color: #000 !important;
+  }
+  #print-area table, #print-area th, #print-area td,
+  #print-area hr, #print-area header, #print-area article {
+    border-color: #000 !important;
+  }
   .rx-print { page-break-inside: avoid; }
 }
 
