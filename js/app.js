@@ -1030,7 +1030,7 @@ function openConsultaModal() {
       <div class="form-row" style="align-items:end;">
         <div class="form-group" style="flex:2;">
           <label>Buscar estudio de imagen</label>
-          <input type="text" class="form-control" id="add-est-imagen-search" name="clinical-imaging-search-field" list="estudios-imagen-options" placeholder="Escribe o selecciona un estudio..." autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" readonly onfocus="this.removeAttribute('readonly')">
+          <input type="text" class="form-control" id="add-est-imagen-search" name="clinical-imaging-search-field" list="estudios-imagen-options" placeholder="Escribe o selecciona un estudio..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly')">
           <datalist id="estudios-imagen-options">
             ${estudiosImagenCatalogo.map(nombre => `<option value="${escapeAttr(nombre)}"></option>`).join('')}
           </datalist>
