@@ -967,3 +967,54 @@ body.tema-suave .recipe-banner {
   color: #dce6f0;
 }
 body.tema-suave .recipe-banner span { color: #c7d2de; }
+
+
+/* Buscadores de estudios: lista de opciones sin líneas divisorias y adaptable a móvil */
+.study-image-results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 0;
+  border-radius: 8px;
+}
+.study-image-result {
+  flex: 0 0 auto;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border: 0 !important;
+  border-radius: 8px;
+  background: #eef2f7;
+  color: #354052;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.study-image-result:hover,
+.study-image-result:focus {
+  background: #dce7f5;
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.tema-suave .study-image-results {
+  background: transparent;
+  border: 0;
+}
+.tema-suave .study-image-result {
+  background: #303943;
+  color: #e0e6ed;
+  border: 0 !important;
+  box-shadow: none;
+}
+.tema-suave .study-image-result:hover,
+.tema-suave .study-image-result:focus {
+  background: #3b4653;
+  color: #f4f7fb;
+}
+@media (max-width: 700px) {
+  .study-image-results { max-height: 200px; }
+  .study-image-result { padding: 12px; font-size: inherit; }
+}
