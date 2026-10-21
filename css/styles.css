@@ -917,3 +917,43 @@ body.tema-suave {
   color: #c0cad7;
   background: #303640;
 }
+
+
+/* Chat: contraste reforzado y selectores específicos para evitar estilos heredados */
+body.tema-suave #chat-messages {
+  background-color: #1b222c !important;
+  color: #f8fafc !important;
+}
+body.tema-suave #chat-messages .chat-message {
+  background-color: #303a48 !important;
+  color: #f8fafc !important;
+  border: 1px solid #596779 !important;
+}
+body.tema-suave #chat-messages .chat-message.chat-message-own {
+  background-color: #153e66 !important;
+  color: #ffffff !important;
+  border-color: #4b91cf !important;
+}
+body.tema-suave #chat-messages .chat-message-meta strong {
+  color: #d5e7ff !important;
+}
+body.tema-suave #chat-messages .chat-message-meta span {
+  color: #d1dae6 !important;
+}
+body.tema-suave #chat-messages .chat-message-text {
+  color: #f8fafc !important;
+}
+body.tema-suave .chat-compose,
+body.tema-suave .chat-note {
+  background-color: #292f39 !important;
+  color: #e2e8f0 !important;
+}
+body.tema-suave .chat-compose textarea#chat-message {
+  background-color: #171d26 !important;
+  color: #ffffff !important;
+  border: 1px solid #64748b !important;
+}
+body.tema-suave .chat-compose textarea#chat-message::placeholder {
+  color: #cbd5e1 !important;
+  opacity: 1;
+}
