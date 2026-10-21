@@ -1017,10 +1017,10 @@ function openConsultaModal() {
       <div class="form-row" style="align-items:end;">
         <div class="form-group" style="flex:2;">
           <label>Estudio</label>
-          <select class="form-control" id="add-est-id">
-            <option value="">— Seleccione —</option>
-            ${ests.map(e => `<option value="${e.id}">${escapeHtml(e.nombre)}</option>`).join('')}
-          </select>
+          <input type="text" class="form-control" id="add-est-id" list="add-est-lab-options" placeholder="Escribe para buscar un estudio..." autocomplete="off" autocapitalize="off" spellcheck="false">
+          <datalist id="add-est-lab-options">
+            ${ests.map(e => `<option value="${escapeAttr(e.nombre)}" data-id="${e.id}"></option>`).join('')}
+          </datalist>
         </div>
         <div class="form-group">
           <button type="button" class="btn btn-outline" onclick="addEstToConsulta()">Agregar</button>
@@ -1033,10 +1033,10 @@ function openConsultaModal() {
       <div class="form-row" style="align-items:end;">
         <div class="form-group" style="flex:2;">
           <label>Seleccionar estudio de imagen</label>
-          <select class="form-control" id="add-est-imagen-search" autocomplete="off" aria-label="Seleccionar estudio de imagen">
-            <option value="">— Seleccione un estudio de imagen —</option>
-            ${estudiosImagenCatalogo.map(nombre => `<option value="${escapeAttr(nombre)}">${escapeHtml(nombre)}</option>`).join('')}
-          </select>
+          <input type="text" class="form-control" id="add-est-imagen-search" list="add-est-imagen-options" placeholder="Escribe para buscar un estudio de imagen..." autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Buscar estudio de imagen">
+          <datalist id="add-est-imagen-options">
+            ${estudiosImagenCatalogo.map(nombre => `<option value="${escapeAttr(nombre)}"></option>`).join('')}
+          </datalist>
         </div>
         <div class="form-group">
           <button type="button" class="btn btn-outline" onclick="addEstImagenToConsulta()">Agregar</button>
@@ -1133,15 +1133,34 @@ async function renderTempMeds() {
   </ul>`;
 }
 
-function addEstToConsulta() {
-  const id = document.getElementById('add-est-id').value;
-  if (!id) return;
-  if (APP.tempConsulta.estudios.find(e => e == id)) {
-    alert('Este estudio ya está agregado');
-    return;
-  }
-  APP.tempConsulta.estudios.push(parseInt(id));
-  renderTempEsts();
+async function addEstToConsulta() {
+  const input = document.getElementById('add-est-id');
+  const nombre = input ? input.value.trim() : '';
+  if (!nombre) return;
+  try {
+    const existentes = await DB.getAll(DB.STORES.estudios);
+    let estudio = existentes.find(e => (e.nombre || '').trim().toLocaleLowerCase('es-MX') === nombre.toLocaleLowerCase('es-MX'));
+    if (!estudio) {
+      if (!confirm('El estudio "' + nombre + '" no está en el catálogo. ¿Deseas agregarlo al catálogo y a esta consulta?')) return;
+      estudio = await DB.add(DB.STORES.estudios, {nombre, precio: 0});
+      if (!estudio || !estudio.id) {
+        const actualizados = await DB.getAll(DB.STORES.estudios);
+        estudio = actualizados.find(e => (e.nombre || '').trim().toLocaleLowerCase('es-MX') === nombre.toLocaleLowerCase('es-MX'));
+      }
+      if (!estudio || !estudio.id) return alert('No se pudo guardar el estudio en el catálogo.');
+      const options = document.getElementById('add-est-lab-options');
+      if (options && ![...options.options].some(o => o.value.toLocaleLowerCase('es-MX') === nombre.toLocaleLowerCase('es-MX'))) {
+        options.appendChild(new Option(estudio.nombre));
+      }
+    }
+    if (APP.tempConsulta.estudios.some(e => String(e) === String(estudio.id))) {
+      alert('Este estudio ya está agregado');
+      return;
+    }
+    APP.tempConsulta.estudios.push(parseInt(estudio.id, 10));
+    input.value = '';
+    renderTempEsts();
+  } catch (err) { alert('No se pudo agregar el estudio: ' + err.message); }
 }
 
 async function agregarEstudioLaboratorioDesdeConsulta() {
@@ -1161,10 +1180,9 @@ async function agregarEstudioLaboratorioDesdeConsulta() {
     }
     if (!estudio || !estudio.id) return alert('Se guardó el estudio, pero no pude seleccionarlo automáticamente. Vuelve a elegirlo en la lista.');
     const select = document.getElementById('add-est-id');
-    if (![...select.options].some(o => o.value === String(estudio.id))) {
-      select.add(new Option(estudio.nombre, estudio.id));
-    }
-    select.value = String(estudio.id);
+    const options = document.getElementById('add-est-lab-options');
+    if (options && ![...options.options].some(o => o.value === estudio.nombre)) options.appendChild(new Option(estudio.nombre));
+    if (select) select.value = estudio.nombre;
     addEstToConsulta();
     alert('Estudio agregado al catálogo y a esta consulta.');
   } catch (err) { alert('No se pudo guardar el estudio: ' + err.message); }
@@ -1203,9 +1221,8 @@ async function agregarEstudioImagenDesdeConsulta() {
       await DB.setConfig('estudios_imagen_personalizados', catalogo);
     }
     const select = document.getElementById('add-est-imagen-search');
-    if (select && ![...select.options].some(o => o.value.toLocaleLowerCase('es-MX') === limpio.toLocaleLowerCase('es-MX'))) {
-      select.add(new Option(limpio, limpio));
-    }
+    const options = document.getElementById('add-est-imagen-options');
+    if (options && ![...options.options].some(o => o.value.toLocaleLowerCase('es-MX') === limpio.toLocaleLowerCase('es-MX'))) options.appendChild(new Option(limpio));
     if (select) select.value = limpio;
     addEstImagenToConsulta();
     alert('Estudio de imagen agregado al catálogo y a esta consulta.');
