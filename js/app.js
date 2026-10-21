@@ -2234,6 +2234,7 @@ async function imprimirReceta(consultaId) {
   const sv = c.signosVitales || {};
 
   const printArea = document.getElementById('print-area');
+  if (!printArea) throw new Error('No existe el área de impresión en la página.');
   printArea.innerHTML = `
     <style>
       @page { margin: 10mm; }
@@ -2316,15 +2317,8 @@ async function imprimirReceta(consultaId) {
     </div>
   `;
 
-  if (!printArea) throw new Error('No existe el área de impresión en la página.');
-
   if (printWindow && !printWindow.closed) {
     // Documento aislado: evita que Safari tenga que paginar toda la aplicación clínica.
-    // Registrar el evento antes de cerrar el documento para no perderlo en Safari iOS.
-    printWindow.onload = () => {
-      printWindow.focus();
-      printWindow.print();
-    };
     printWindow.document.open();
     printWindow.document.write(`<!doctype html>
       <html lang="es">
@@ -2349,6 +2343,18 @@ async function imprimirReceta(consultaId) {
       <body><div id="print-area">${printArea.innerHTML}</div></body>
       </html>`);
     printWindow.document.close();
+    // Safari iOS no siempre dispara onload tras document.write sobre about:blank.
+    printWindow.setTimeout(() => {
+      try {
+        if (!printWindow.closed) {
+          printWindow.focus();
+          printWindow.print();
+        }
+      } catch (printError) {
+        console.error('No se pudo abrir la impresión en Safari:', printError);
+        alert('Safari no abrió la impresión. Abre esta receta en Safari y permite las ventanas emergentes.');
+      }
+    }, 300);
     printWindow.onafterprint = () => {
       try { printWindow.close(); } catch (_) {}
       if (confirm('Receta preparada. ¿Deseas registrar ahora el cobro de esta consulta?')) {
