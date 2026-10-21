@@ -2307,9 +2307,7 @@ async function imprimirReceta(consultaId) {
       ${c.proximaCita ? `<p style="margin-top:12px; font-size:10pt;"><strong>Próxima cita:</strong> ${c.proximaCita}</p>` : ''}
 
       <div class="rx-signature">
-        <div class="rx-signature-line">Firma del médico</div>
-        ${m && m.nombre ? '<div><strong>' + escapeHtml(m.nombre) + '</strong></div>' : ''}
-        ${m && m.cedula ? '<div>Cédula profesional: ' + escapeHtml(m.cedula) + '</div>' : ''}
+        <div class="rx-signature-line">Firma Del Medico</div>
       </div>
 
       <p style="margin-top: 12px; text-align: center; font-style: italic; font-size: 9pt; color: #000;">
@@ -2322,6 +2320,11 @@ async function imprimirReceta(consultaId) {
 
   if (printWindow && !printWindow.closed) {
     // Documento aislado: evita que Safari tenga que paginar toda la aplicación clínica.
+    // Registrar el evento antes de cerrar el documento para no perderlo en Safari iOS.
+    printWindow.onload = () => {
+      printWindow.focus();
+      printWindow.print();
+    };
     printWindow.document.open();
     printWindow.document.write(`<!doctype html>
       <html lang="es">
@@ -2352,11 +2355,7 @@ async function imprimirReceta(consultaId) {
         registrarCobroConsulta(consultaId);
       }
     };
-    // Esperar a que Safari termine de construir el documento pequeño antes de abrir imprimir.
-    printWindow.onload = () => {
-      printWindow.focus();
-      printWindow.print();
-    };
+    // Safari iOS abre la vista de impresión del documento limpio, desde donde puede guardarse como PDF.
   } else {
     // Respaldo si Safari bloquea las ventanas emergentes.
     window.print();
