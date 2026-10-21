@@ -434,7 +434,7 @@ function openMedicoModal(id = null) {
   title.textContent = id ? 'Editar Médico' : 'Nuevo Médico';
 
   const load = async () => {
-    let m = { nombre: '', especialidad: '', cedula: '', cedulaEsp: '', domicilio: '', telefono: '', honorarios: '', activo: true };
+    let m = { nombre: '', especialidad: '', cedula: '', cedulaEsp: '', domicilio: '', telefono: '', institucion: '', honorarios: '', activo: true };
     if (id) m = await DB.get(DB.STORES.medicos, id) || m;
 
     body.innerHTML = `
@@ -467,6 +467,10 @@ function openMedicoModal(id = null) {
         <input type="text" class="form-control" id="m-telefono" value="${escapeAttr(m.telefono || '')}">
       </div>
       <div class="form-group">
+        <label>Nombre de la institución / consultorio</label>
+        <input type="text" class="form-control" id="m-institucion" value="${escapeAttr(m.institucion || '')}" placeholder="Nombre que aparecerá en la receta">
+      </div>
+      <div class="form-group">
         <label>Honorarios habituales por consulta (MXN)</label>
         <input type="number" min="0" step="0.01" class="form-control" id="m-honorarios" value="${m.honorarios == null ? '' : escapeAttr(m.honorarios)}" placeholder="Ej. 800">
         <small class="text-muted">Este importe se sugerirá al registrar el cobro. Puede cambiarse en cada consulta.</small>
@@ -497,6 +501,7 @@ async function saveMedico() {
     cedulaEsp: document.getElementById('m-cedulaEsp').value.trim(),
     domicilio: document.getElementById('m-domicilio').value.trim(),
     telefono: document.getElementById('m-telefono').value.trim(),
+    institucion: document.getElementById('m-institucion').value.trim(),
     honorarios: document.getElementById('m-honorarios').value.trim() === '' ? null : Number(document.getElementById('m-honorarios').value),
     activo: true
   };
@@ -863,6 +868,7 @@ function openConsultaModal() {
   APP.tempConsulta = {
     medicamentos: [],
     estudios: [],
+    estudiosImagen: [],
     signos: { ta: '', fc: '', fr: '', temp: '', peso: '', talla: '', spo2: '' }
   };
 
@@ -879,6 +885,18 @@ function openConsultaModal() {
     const medicos = (await DB.getAll(DB.STORES.medicos)).filter(m => m.activo !== false);
     const meds = await DB.getAll(DB.STORES.medicamentos);
     const ests = await DB.getAll(DB.STORES.estudios);
+    const estudiosImagenCatalogo = [
+      'Radiografía de tórax PA', 'Radiografía de tórax PA y lateral', 'Radiografía de abdomen simple',
+      'Radiografía de columna cervical', 'Radiografía de columna lumbar', 'Radiografía de pelvis',
+      'Radiografía de hombro', 'Radiografía de codo', 'Radiografía de muñeca', 'Radiografía de mano',
+      'Radiografía de cadera', 'Radiografía de rodilla', 'Radiografía de tobillo', 'Radiografía de pie',
+      'Ultrasonido abdominal', 'Ultrasonido pélvico', 'Ultrasonido obstétrico',
+      'Ultrasonido renal y vías urinarias', 'Ultrasonido hepatobiliar', 'Ultrasonido mamario',
+      'Ultrasonido tiroideo', 'Ultrasonido Doppler venoso', 'Ultrasonido Doppler arterial',
+      'Tomografía de cráneo simple', 'Tomografía de tórax', 'Tomografía de abdomen y pelvis',
+      'Resonancia magnética de cráneo', 'Resonancia magnética de columna lumbar',
+      'Resonancia magnética de rodilla', 'Mastografía bilateral', 'Densitometría ósea'
+    ];
 
     body.innerHTML = `
       <div class="form-row">
@@ -1004,6 +1022,21 @@ function openConsultaModal() {
         </div>
       </div>
 
+      <h4 style="margin:1.25rem 0 0.75rem; font-size:1rem;">Estudios de imagen indicados</h4>
+      <div id="ests-imagen-list"></div>
+      <div class="form-row" style="align-items:end;">
+        <div class="form-group" style="flex:2;">
+          <label>Buscar estudio de imagen</label>
+          <input type="text" class="form-control" id="add-est-imagen-search" list="estudios-imagen-options" placeholder="Escribe o selecciona un estudio..." autocomplete="off">
+          <datalist id="estudios-imagen-options">
+            ${estudiosImagenCatalogo.map(nombre => `<option value="${escapeAttr(nombre)}"></option>`).join('')}
+          </datalist>
+        </div>
+        <div class="form-group">
+          <button type="button" class="btn btn-outline" onclick="addEstImagenToConsulta()">Agregar</button>
+        </div>
+      </div>
+
       <div class="form-group mt-2">
         <label>Próxima cita</label>
         <input type="date" class="form-control" id="c-proxima">
@@ -1034,6 +1067,7 @@ function openConsultaModal() {
 
     renderTempMeds();
     renderTempEsts();
+    renderTempEstsImagen();
   };
 
   load();
@@ -1106,6 +1140,40 @@ function addEstToConsulta() {
 function removeEstFromConsulta(idx) {
   APP.tempConsulta.estudios.splice(idx, 1);
   renderTempEsts();
+}
+
+
+function addEstImagenToConsulta() {
+  const input = document.getElementById('add-est-imagen-search');
+  const nombre = input ? input.value.trim() : '';
+  if (!nombre) return;
+  const items = APP.tempConsulta.estudiosImagen || (APP.tempConsulta.estudiosImagen = []);
+  if (items.some(e => e.toLocaleLowerCase('es-MX') === nombre.toLocaleLowerCase('es-MX'))) {
+    alert('Este estudio de imagen ya está agregado');
+    return;
+  }
+  items.push(nombre);
+  input.value = '';
+  input.focus();
+  renderTempEstsImagen();
+}
+
+function removeEstImagenFromConsulta(idx) {
+  APP.tempConsulta.estudiosImagen.splice(idx, 1);
+  renderTempEstsImagen();
+}
+
+function renderTempEstsImagen() {
+  const list = document.getElementById('ests-imagen-list');
+  if (!list) return;
+  const items = APP.tempConsulta.estudiosImagen || [];
+  if (!items.length) {
+    list.innerHTML = '<p class="text-muted" style="font-size:0.9rem;">Ningún estudio de imagen agregado.</p>';
+    return;
+  }
+  list.innerHTML = '<ul style="list-style:none;padding:0;">' + items.map((nombre, i) =>
+    '<li style="padding:0.4rem 0;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;"><span>' + escapeHtml(nombre) + '</span><button type="button" class="btn btn-danger btn-sm" onclick="removeEstImagenFromConsulta(' + i + ')">×</button></li>'
+  ).join('') + '</ul>';
 }
 
 async function renderTempEsts() {
@@ -1235,6 +1303,7 @@ async function saveConsulta() {
     },
     medicamentos: APP.tempConsulta.medicamentos,
     estudios: APP.tempConsulta.estudios,
+    estudiosImagen: APP.tempConsulta.estudiosImagen || [],
     proximaCita: document.getElementById('c-proxima').value || null
   };
 
@@ -1269,6 +1338,8 @@ async function verConsulta(id) {
     return `<li>${item ? item.nombre : '—'}</li>`;
   }).join('') || '<li>Ninguno</li>';
 
+  const estsImagenHtml = (c.estudiosImagen || []).map(nombre => `<li>${escapeHtml(nombre)}</li>`).join('') || '<li>Ninguno</li>';
+
   const sv = c.signosVitales || {};
 
   const modal = document.getElementById('generic-modal');
@@ -1288,8 +1359,10 @@ async function verConsulta(id) {
     </p>
     <p><strong>Medicamentos:</strong></p>
     <ul>${medsHtml}</ul>
-    <p><strong>Estudios:</strong></p>
+    <p><strong>Estudios de laboratorio:</strong></p>
     <ul>${estsHtml}</ul>
+    <p><strong>Estudios de imagen:</strong></p>
+    <ul>${estsImagenHtml}</ul>
     <p><strong>Próxima cita:</strong> ${c.proximaCita || '—'}</p>
   `;
   document.getElementById('modal-footer').innerHTML = `
@@ -2153,6 +2226,8 @@ async function imprimirReceta(consultaId) {
     return `<li>${item ? escapeHtml(item.nombre) : '—'}</li>`;
   }).join('') || '<li>Ninguno</li>';
 
+  const estsImagenHtml = (c.estudiosImagen || []).map(nombre => `<li>${escapeHtml(nombre)}</li>`).join('') || '<li>Ninguno</li>';
+
   const sv = c.signosVitales || {};
 
   const printArea = document.getElementById('print-area');
@@ -2160,7 +2235,7 @@ async function imprimirReceta(consultaId) {
     <div style="font-family: 'Times New Roman', serif; max-width: 800px; margin: 0 auto;">
       <div style="text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 15px;">
         <h2 style="margin:0; font-size: 18pt;">${titulo}</h2>
-        <p style="margin:4px 0; font-size: 11pt;">Consultorio Médico CC</p>
+        <p style="margin:4px 0; font-size: 11pt; font-weight:bold; color:#000;">${escapeHtml((m && m.institucion) || 'Consultorio Médico CC')}</p>
       </div>
 
       ${m ? `
@@ -2209,6 +2284,9 @@ async function imprimirReceta(consultaId) {
 
       <h3 style="font-size: 12pt; margin: 15px 0 8px; border-bottom: 1px solid #999;">Estudios de laboratorio</h3>
       <ul style="font-size: 10pt; margin: 0; padding-left: 20px;">${estsHtml}</ul>
+
+      <h3 style="font-size: 12pt; margin: 15px 0 8px; border-bottom: 1px solid #999;">Estudios de imagen</h3>
+      <ul style="font-size: 10pt; margin: 0; padding-left: 20px;">${estsImagenHtml}</ul>
 
       ${c.proximaCita ? `<p style="margin-top:12px; font-size:10pt;"><strong>Próxima cita:</strong> ${c.proximaCita}</p>` : ''}
 
