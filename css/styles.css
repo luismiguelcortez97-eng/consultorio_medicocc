@@ -969,8 +969,8 @@ body.tema-suave .recipe-banner {
 body.tema-suave .recipe-banner span { color: #c7d2de; }
 
 
-/* Buscadores de estudios: lista de opciones sin líneas divisorias y adaptable a móvil */
-.study-image-results {
+/* Listas de medicamentos, laboratorio e imagen: tarjetas sin fondo blanco en modo nocturno */
+.recipe-med-results {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -980,7 +980,7 @@ body.tema-suave .recipe-banner span { color: #c7d2de; }
   border: 0;
   border-radius: 8px;
 }
-.study-image-result {
+.recipe-med-result {
   flex: 0 0 auto;
   width: 100%;
   text-align: left;
@@ -991,30 +991,42 @@ body.tema-suave .recipe-banner span { color: #c7d2de; }
   color: #354052;
   cursor: pointer;
   font: inherit;
-  text-align: left;
 }
-.study-image-result:hover,
-.study-image-result:focus {
+.recipe-med-result:hover,
+.recipe-med-result:focus {
   background: #dce7f5;
   outline: 2px solid var(--primary);
   outline-offset: -2px;
 }
-.tema-suave .study-image-results {
-  background: transparent;
-  border: 0;
-}
-.tema-suave .study-image-result {
-  background: #303943;
-  color: #e0e6ed;
+body.tema-suave .recipe-med-result,
+body.tema-suave .study-search-option,
+.tema-suave .recipe-med-result,
+.tema-suave .study-search-option {
+  background: #303943 !important;
+  color: #e0e6ed !important;
   border: 0 !important;
-  box-shadow: none;
+  box-shadow: none !important;
 }
-.tema-suave .study-image-result:hover,
-.tema-suave .study-image-result:focus {
-  background: #3b4653;
-  color: #f4f7fb;
+body.tema-suave .recipe-med-result:hover,
+body.tema-suave .recipe-med-result:focus,
+body.tema-suave .study-search-option:hover,
+body.tema-suave .study-search-option:focus,
+.tema-suave .recipe-med-result:hover,
+.tema-suave .recipe-med-result:focus,
+.tema-suave .study-search-option:hover,
+.tema-suave .study-search-option:focus {
+  background: #3b4653 !important;
+  color: #f4f7fb !important;
+}
+body.tema-suave .recipe-med-results,
+.tema-suave .recipe-med-results,
+body.tema-suave .study-search-results,
+.tema-suave .study-search-results {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
 }
 @media (max-width: 700px) {
-  .study-image-results { max-height: 200px; }
-  .study-image-result { padding: 12px; font-size: inherit; }
+  .recipe-med-results { max-height: 200px; }
+  .recipe-med-result { padding: 12px; font-size: inherit; }
 }
