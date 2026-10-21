@@ -2999,17 +2999,43 @@ async function openPlantillaRecetaModal(id) {
     '<div class="form-row"><div class="form-group"><label>Domicilio profesional</label><input class="form-control" id="pt-domicilio" value="' + featureEscape(p.domicilio || '') + '"></div>' +
     '<div class="form-group"><label>Teléfono</label><input class="form-control" id="pt-telefono" value="' + featureEscape(p.telefono || '') + '"></div></div>' +
     '<div class="form-group"><label>Texto de firma / cédula</label><textarea class="form-control" id="pt-firma" rows="2">' + featureEscape(p.firma || '') + '</textarea></div>' +
-    '<div class="form-group"><label>Pie de página</label><textarea class="form-control" id="pt-pie" rows="2">' + featureEscape(p.pie || '') + '</textarea></div>';
+    '<div class="form-group"><label>Pie de página</label><textarea class="form-control" id="pt-pie" rows="2" autocomplete="off">' + featureEscape(p.pie || '') + '</textarea></div>' +
+    '<hr><h4>Hoja membretada y alineación</h4><div class="form-group"><label>Imagen de fondo de la receta (JPG o PNG)</label><input class="form-control" id="pt-fondo" type="file" accept="image/png,image/jpeg" autocomplete="off"><small>Sube una imagen de tu hoja preimpresa. El texto se imprimirá encima de ella.</small></div>' +
+    (p.fondoImagen ? '<div class="form-group"><img src="' + p.fondoImagen + '" alt="Fondo de receta" style="max-width:220px;max-height:150px;object-fit:contain;border:1px solid #aaa;padding:4px"><label><input type="checkbox" id="pt-quitar-fondo"> Quitar imagen actual</label></div>' : '') +
+    '<div class="form-row"><div class="form-group"><label>Margen superior (mm)</label><input class="form-control" type="number" id="pt-margen-superior" min="0" max="100" value="' + Number(p.margenSuperior || 10) + '" autocomplete="off"></div><div class="form-group"><label>Margen izquierdo (mm)</label><input class="form-control" type="number" id="pt-margen-izquierdo" min="0" max="100" value="' + Number(p.margenIzquierdo || 10) + '" autocomplete="off"></div></div>' +
+    '<button type="button" class="btn btn-outline btn-sm" onclick="vistaPreviaPlantillaReceta()">Vista previa / calibrar</button>';
   footer.innerHTML = '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="guardarPlantillaReceta()">Guardar plantilla</button>';
   modal.classList.add('show');
 }
 
+async function vistaPreviaPlantillaReceta() {
+  const file=document.getElementById('pt-fondo').files[0];
+  let fondo='';
+  if(file){if(!/^image\/(png|jpeg)$/.test(file.type))return alert('Selecciona una imagen JPG o PNG.');fondo=await new Promise(function(resolve,reject){const r=new FileReader();r.onload=function(){resolve(r.result);};r.onerror=reject;r.readAsDataURL(file);});}
+  else if(APP.editingId){const p=await DB.get('plantillas_receta',APP.editingId);fondo=p&&p.fondoImagen?p.fondoImagen:'';}
+  const top=Number(document.getElementById('pt-margen-superior').value||10), left=Number(document.getElementById('pt-margen-izquierdo').value||10);
+  const w=window.open('','_blank');if(!w)return alert('El navegador bloqueó la vista previa. Permite ventanas emergentes para este sitio.');
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Vista previa de receta</title><style>@page{size:letter;margin:0}*{box-sizing:border-box}body{margin:0;font:12px Arial}.sheet{position:relative;width:216mm;height:279mm;margin:0 auto;background:#fff;overflow:hidden}.bg{position:absolute;inset:0;width:100%;height:100%;object-fit:fill}.content{position:absolute;top:'+top+'mm;left:'+left+'mm;right:10mm;z-index:2;font:10pt "Times New Roman",serif}.guide{border:1px dashed #888;padding:3mm;min-height:40mm}.hint{position:fixed;top:8px;right:8px;background:#fff;padding:8px;border:1px solid #888;z-index:5}@media print{.hint{display:none}}</style></head><body><div class="hint">Tamaño carta · Superior: '+top+' mm · Izquierdo: '+left+' mm</div><div class="sheet">'+(fondo?'<img class="bg" src="'+fondo+'">':'')+'<div class="content"><div class="guide"><strong>'+featureEscape(document.getElementById('pt-encabezado').value||document.getElementById('pt-nombre').value)+'</strong><p>Paciente: __________________________________</p><p>Fecha: ________________</p><p>Diagnóstico: ______________________________</p><p>Rp/</p><p>__________________________________________</p><p>__________________________________________</p><br><p style="text-align:center">Firma Del Medico</p></div></div></div></body></html>');
+  w.document.close();
+}
 async function guardarPlantillaReceta() {
   const nombre = document.getElementById('pt-nombre').value.trim();
   const medicoId = document.getElementById('pt-medico').value;
   if (!nombre || !medicoId) return alert('Indica el nombre de la plantilla y el médico titular.');
+  const existente = APP.editingId ? await DB.get('plantillas_receta', APP.editingId) : null;
+  const archivo = document.getElementById('pt-fondo').files[0];
+  let fondoImagen = existente && existente.fondoImagen ? existente.fondoImagen : '';
+  if (document.getElementById('pt-quitar-fondo') && document.getElementById('pt-quitar-fondo').checked) fondoImagen = '';
+  if (archivo) {
+    if (!/^image\/(png|jpeg)$/.test(archivo.type)) return alert('Selecciona una imagen JPG o PNG.');
+    if (archivo.size > 5 * 1024 * 1024) return alert('La imagen debe pesar 5 MB o menos.');
+    fondoImagen = await new Promise(function(resolve,reject){const reader=new FileReader();reader.onload=function(){resolve(reader.result);};reader.onerror=reject;reader.readAsDataURL(archivo);});
+  }
   const data = {
     nombre: nombre, medicoId: Number(medicoId),
+    fondoImagen: fondoImagen,
+    margenSuperior: Math.max(0,Math.min(100,Number(document.getElementById('pt-margen-superior').value || 10))),
+    margenIzquierdo: Math.max(0,Math.min(100,Number(document.getElementById('pt-margen-izquierdo').value || 10))),
     encabezado: document.getElementById('pt-encabezado').value.trim(),
     domicilio: document.getElementById('pt-domicilio').value.trim(),
     telefono: document.getElementById('pt-telefono').value.trim(),
