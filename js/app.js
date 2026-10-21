@@ -2252,12 +2252,12 @@ async function imprimirReceta(consultaId) {
     <div class="rx-consulta-print" style="font-family: 'Times New Roman', serif; max-width: 800px; margin: 0 auto;">
       <div style="text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 15px;">
         <h2 style="margin:0; font-size: 18pt;">${titulo}</h2>
-        <p style="margin:4px 0; font-size: 11pt; font-weight:bold; color:#000;">${escapeHtml((m && m.institucion) || 'Consultorio Médico CC')}</p>
       </div>
 
       ${m ? `
         <div style="margin-bottom: 12px; font-size: 10pt;">
           <strong>Dr(a). ${escapeHtml(m.nombre)}</strong><br>
+          <strong>${escapeHtml(m.institucion || 'Consultorio Médico CC')}</strong><br>
           ${m.especialidad ? 'Especialidad: ' + escapeHtml(m.especialidad) + '<br>' : ''}
           ${m.cedula ? 'Cédula profesional: ' + escapeHtml(m.cedula) + '<br>' : ''}
           ${m.cedulaEsp ? 'Cédula de especialidad: ' + escapeHtml(m.cedulaEsp) + '<br>' : ''}
