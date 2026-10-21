@@ -888,7 +888,7 @@ function openConsultaModal() {
     const medicos = (await DB.getAll(DB.STORES.medicos)).filter(m => m.activo !== false);
     const meds = await DB.getAll(DB.STORES.medicamentos);
     const ests = await DB.getAll(DB.STORES.estudios);
-    const estudiosImagenCatalogo = [
+    const estudiosImagenBase = [
       'Radiografía de tórax PA', 'Radiografía de tórax PA y lateral', 'Radiografía de abdomen simple',
       'Radiografía de columna cervical', 'Radiografía de columna lumbar', 'Radiografía de pelvis',
       'Radiografía de hombro', 'Radiografía de codo', 'Radiografía de muñeca', 'Radiografía de mano',
@@ -900,6 +900,8 @@ function openConsultaModal() {
       'Resonancia magnética de cráneo', 'Resonancia magnética de columna lumbar',
       'Resonancia magnética de rodilla', 'Mastografía bilateral', 'Densitometría ósea'
     ];
+    const estudiosImagenPersonalizados = (await DB.getConfig('estudios_imagen_personalizados')) || [];
+    const estudiosImagenCatalogo = [...new Set([...estudiosImagenBase, ...estudiosImagenPersonalizados])];
 
     body.innerHTML = `
       <div class="form-row">
@@ -1022,6 +1024,7 @@ function openConsultaModal() {
         </div>
         <div class="form-group">
           <button type="button" class="btn btn-outline" onclick="addEstToConsulta()">Agregar</button>
+          <button type="button" class="btn btn-secondary" style="margin-top:.4rem" onclick="agregarEstudioLaboratorioDesdeConsulta()">+ Estudio no listado</button>
         </div>
       </div>
 
@@ -1037,6 +1040,7 @@ function openConsultaModal() {
         </div>
         <div class="form-group">
           <button type="button" class="btn btn-outline" onclick="addEstImagenToConsulta()">Agregar</button>
+          <button type="button" class="btn btn-secondary" style="margin-top:.4rem" onclick="agregarEstudioImagenDesdeConsulta()">+ Estudio no listado</button>
         </div>
       </div>
 
@@ -1140,6 +1144,32 @@ function addEstToConsulta() {
   renderTempEsts();
 }
 
+async function agregarEstudioLaboratorioDesdeConsulta() {
+  const nombre = prompt('Nombre del estudio de laboratorio que no aparece en la lista:');
+  if (nombre === null) return;
+  const limpio = nombre.trim();
+  if (!limpio) return alert('Escribe el nombre del estudio.');
+  try {
+    const existentes = await DB.getAll(DB.STORES.estudios);
+    const repetido = existentes.find(e => (e.nombre || '').trim().toLocaleLowerCase('es-MX') === limpio.toLocaleLowerCase('es-MX'));
+    let estudio = repetido;
+    if (!estudio) estudio = await DB.add(DB.STORES.estudios, {nombre: limpio, precio: 0});
+    const id = estudio && estudio.id;
+    if (!id) {
+      const actualizados = await DB.getAll(DB.STORES.estudios);
+      estudio = actualizados.find(e => (e.nombre || '').trim().toLocaleLowerCase('es-MX') === limpio.toLocaleLowerCase('es-MX'));
+    }
+    if (!estudio || !estudio.id) return alert('Se guardó el estudio, pero no pude seleccionarlo automáticamente. Vuelve a elegirlo en la lista.');
+    const select = document.getElementById('add-est-id');
+    if (![...select.options].some(o => o.value === String(estudio.id))) {
+      select.add(new Option(estudio.nombre, estudio.id));
+    }
+    select.value = String(estudio.id);
+    addEstToConsulta();
+    alert('Estudio agregado al catálogo y a esta consulta.');
+  } catch (err) { alert('No se pudo guardar el estudio: ' + err.message); }
+}
+
 function removeEstFromConsulta(idx) {
   APP.tempConsulta.estudios.splice(idx, 1);
   renderTempEsts();
@@ -1157,8 +1187,29 @@ function addEstImagenToConsulta() {
   }
   items.push(nombre);
   input.value = '';
-  input.focus();
   renderTempEstsImagen();
+}
+
+async function agregarEstudioImagenDesdeConsulta() {
+  const nombre = prompt('Nombre del estudio de imagen que no aparece en la lista:');
+  if (nombre === null) return;
+  const limpio = nombre.trim();
+  if (!limpio) return alert('Escribe el nombre del estudio.');
+  try {
+    const catalogo = (await DB.getConfig('estudios_imagen_personalizados')) || [];
+    const existente = catalogo.find(n => n.toLocaleLowerCase('es-MX') === limpio.toLocaleLowerCase('es-MX'));
+    if (!existente) {
+      catalogo.push(limpio);
+      await DB.setConfig('estudios_imagen_personalizados', catalogo);
+    }
+    const select = document.getElementById('add-est-imagen-search');
+    if (select && ![...select.options].some(o => o.value.toLocaleLowerCase('es-MX') === limpio.toLocaleLowerCase('es-MX'))) {
+      select.add(new Option(limpio, limpio));
+    }
+    if (select) select.value = limpio;
+    addEstImagenToConsulta();
+    alert('Estudio de imagen agregado al catálogo y a esta consulta.');
+  } catch (err) { alert('No se pudo guardar el estudio: ' + err.message); }
 }
 
 function removeEstImagenFromConsulta(idx) {
