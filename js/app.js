@@ -552,8 +552,11 @@ async function renderPacientes() {
         <div class="pacientes-buscador">
           <label for="pacientes-busqueda"><strong>Buscar paciente registrado</strong></label>
           <input type="search" class="form-control" id="pacientes-busqueda"
+            name="patient_lookup_query"
             placeholder="Escribe nombre, apellido o teléfono..."
-            autocomplete="off" aria-describedby="pacientes-busqueda-ayuda">
+            autocomplete="new-password" autocapitalize="none" spellcheck="false"
+            data-lpignore="true" data-1p-ignore="true" data-bwignore="true"
+            aria-describedby="pacientes-busqueda-ayuda" role="searchbox">
           <small id="pacientes-busqueda-ayuda" class="text-muted">Busca antes de crear un expediente para verificar si el paciente ya está registrado.</small>
         </div>
         <p id="pacientes-busqueda-resumen" class="text-muted" aria-live="polite"></p>
