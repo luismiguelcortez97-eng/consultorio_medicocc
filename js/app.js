@@ -2232,7 +2232,20 @@ async function imprimirReceta(consultaId) {
 
   const printArea = document.getElementById('print-area');
   printArea.innerHTML = `
-    <div style="font-family: 'Times New Roman', serif; max-width: 800px; margin: 0 auto;">
+    <style>
+      @page { margin: 10mm; }
+      #print-area .rx-consulta-print { font-family: "Times New Roman", serif; color: #000 !important; font-size: 10pt; line-height: 1.18; max-width: 190mm; margin: 0 auto; }
+      #print-area .rx-consulta-print * { color: #000 !important; box-sizing: border-box; }
+      #print-area .rx-consulta-print h2 { font-size: 15pt; }
+      #print-area .rx-consulta-print h3 { font-size: 11pt; margin: 8px 0 4px !important; break-after: avoid; page-break-after: avoid; }
+      #print-area .rx-consulta-print table { font-size: 9pt !important; }
+      #print-area .rx-consulta-print th, #print-area .rx-consulta-print td { padding: 3px 4px !important; overflow-wrap: anywhere; }
+      #print-area .rx-consulta-print tr, #print-area .rx-consulta-print .rx-signature { break-inside: avoid; page-break-inside: avoid; }
+      #print-area .rx-consulta-print .rx-signature { margin-top: 22px !important; text-align: center; font-size: 10pt; }
+      #print-area .rx-consulta-print .rx-signature-line { border-top: 1px solid #000; width: 220px; max-width: 75%; margin: 0 auto 4px; padding-top: 4px; }
+      @media print { #print-area .rx-consulta-print { max-width: none; margin: 0; } }
+    </style>
+    <div class="rx-consulta-print" style="font-family: 'Times New Roman', serif; max-width: 800px; margin: 0 auto;">
       <div style="text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 15px;">
         <h2 style="margin:0; font-size: 18pt;">${titulo}</h2>
         <p style="margin:4px 0; font-size: 11pt; font-weight:bold; color:#000;">${escapeHtml((m && m.institucion) || 'Consultorio Médico CC')}</p>
@@ -2290,13 +2303,13 @@ async function imprimirReceta(consultaId) {
 
       ${c.proximaCita ? `<p style="margin-top:12px; font-size:10pt;"><strong>Próxima cita:</strong> ${c.proximaCita}</p>` : ''}
 
-      <div style="margin-top: 40px; text-align: center; font-size: 10pt;">
-        <div style="border-top: 1px solid #333; width: 220px; margin: 0 auto; padding-top: 4px;">
-          Firma del médico
-        </div>
+      <div class="rx-signature">
+        <div class="rx-signature-line">Firma del médico</div>
+        ${m && m.nombre ? '<div><strong>' + escapeHtml(m.nombre) + '</strong></div>' : ''}
+        ${m && m.cedula ? '<div>Cédula profesional: ' + escapeHtml(m.cedula) + '</div>' : ''}
       </div>
 
-      <p style="margin-top: 30px; text-align: center; font-style: italic; font-size: 10pt; color: #555;">
+      <p style="margin-top: 12px; text-align: center; font-style: italic; font-size: 9pt; color: #000;">
         Gracias por confiarnos tu salud.
       </p>
     </div>
