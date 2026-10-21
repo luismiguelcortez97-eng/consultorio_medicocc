@@ -2870,6 +2870,15 @@ async function renderChat() {
     '<button type="submit" class="btn btn-primary">Enviar mensaje</button></form>' +
     '<p class="chat-note">No uses el chat para emergencias. Evita incluir información clínica identificable que no sea necesaria.</p></div>';
   document.getElementById('chat-form').addEventListener('submit', enviarMensajeChat);
+  // Enter envía el mensaje; Shift+Enter permite escribir una nueva línea.
+  document.getElementById('chat-message').addEventListener('keydown', function (event) {
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      const form = document.getElementById('chat-form');
+      if (form && typeof form.requestSubmit === 'function') form.requestSubmit();
+      else if (form) enviarMensajeChat({ preventDefault: function () {}, currentTarget: form });
+    }
+  });
   await actualizarChat();
   APP.chatTimer = setInterval(function () {
     if (APP.currentModule === 'chat') actualizarChat();
