@@ -1022,7 +1022,7 @@ function openConsultaModal() {
         <div class="form-group" style="flex:2;">
           <label>Estudio</label>
           <input type="text" class="form-control" id="add-est-id" name="clinical-lab-study-search" placeholder="Escribe para buscar un estudio..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" aria-label="Buscar estudio de laboratorio">
-          <div id="add-est-lab-results" class="study-search-results" role="listbox" style="display:none;max-height:180px;overflow-y:auto;border:1px solid var(--border-color, #9aaac0);border-radius:8px;margin-top:4px;"></div>
+          <div id="add-est-lab-results" class="recipe-med-results study-search-results" role="listbox" style="display:none;"></div>
         </div>
         <div class="form-group">
           <button type="button" class="btn btn-outline" onclick="addEstToConsulta()">Agregar</button>
@@ -1075,7 +1075,7 @@ function openConsultaModal() {
     const renderLabResults = () => {
       const q = labSearchInput.value.trim().toLocaleLowerCase('es-MX');
       const matches = q ? ests.filter(e => (e.nombre || '').toLocaleLowerCase('es-MX').includes(q)).slice(0, 12) : [];
-      labResults.innerHTML = matches.map(e => '<button type="button" role="option" class="study-search-option" data-study-id="' + Number(e.id) + '" style="display:block;width:100%;text-align:left;padding:.65rem .75rem;border:0;border-bottom:1px solid var(--border-color, #e4e8ef);background:transparent;color:var(--text-color, inherit);cursor:pointer;">' + escapeHtml(e.nombre || '') + '</button>').join('');
+      labResults.innerHTML = matches.map(e => '<button type="button" role="option" class="recipe-med-result study-search-option" data-study-id="' + Number(e.id) + '">' + escapeHtml(e.nombre || '') + '</button>').join('');
       labResults.style.display = matches.length ? 'block' : 'none';
       labResults.querySelectorAll('[data-study-id]').forEach(button => button.addEventListener('click', () => {
         const chosen = ests.find(e => String(e.id) === button.dataset.studyId);
