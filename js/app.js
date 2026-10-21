@@ -825,7 +825,7 @@ async function renderConsultas() {
         <td>${escapeHtml((c.motivo || '').substring(0, 50))}${(c.motivo || '').length > 50 ? '…' : ''}</td>
         <td>
           <button class="btn btn-outline btn-sm" onclick="verConsulta(${c.id})">Ver</button>
-          <button class="btn btn-primary btn-sm" onclick="imprimirReceta(${c.id})">Receta</button>
+          <button class="btn btn-primary btn-sm" onclick="elegirTipoReceta(${c.id})">Receta</button>
           <button class="btn btn-success btn-sm" onclick="registrarCobroConsulta(${c.id})">${c.cobroId ? 'Ver cobro registrado' : 'Registrar cobros'}</button>
           <button class="btn btn-danger btn-sm" onclick="eliminarConsulta(${c.id})">Eliminar</button>
         </td>
@@ -1370,7 +1370,7 @@ async function verConsulta(id) {
   `;
   document.getElementById('modal-footer').innerHTML = `
     <button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>
-    <button class="btn btn-primary" onclick="imprimirReceta(${id})">Imprimir Receta</button>
+    <button class="btn btn-primary" onclick="elegirTipoReceta(${id})">Imprimir Receta</button>
     <button class="btn btn-success" onclick="registrarCobroConsulta(${id})">${c.cobroId ? 'Ver cobro registrado' : 'Registrar cobros'}</button>
   `;
   modal.classList.add('show');
@@ -2199,7 +2199,18 @@ async function importData(event) {
 }
 
 // ========== PRINT RECETA ==========
-async function imprimirReceta(consultaId) {
+async function elegirTipoReceta(consultaId) {
+  const c=await DB.get(DB.STORES.consultas,consultaId); if(!c)return alert('No se encontró la consulta.');
+  const todas=await DB.getAll('plantillas_receta');
+  const plantillas=todas.filter(function(p){return !p.medicoId||String(p.medicoId)===String(c.medicoId);});
+  const modal=document.getElementById('generic-modal');
+  document.getElementById('modal-title').textContent='Elegir tipo de receta';
+  document.getElementById('modal-body').innerHTML='<p>Selecciona el formato para esta consulta.</p><div class="form-group"><label for="tipo-receta-elegida">Tipo de receta</label><select class="form-control" id="tipo-receta-elegida"><option value="default">Receta predeterminada del consultorio</option>'+plantillas.map(function(p){return '<option value="'+Number(p.id)+'">'+featureEscape(p.nombre||'Plantilla')+'</option>';}).join('')+'</select></div>';
+  document.getElementById('modal-footer').innerHTML='<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="confirmarTipoReceta('+Number(consultaId)+')">Continuar a imprimir</button>';
+  modal.classList.add('show');
+}
+function confirmarTipoReceta(consultaId) { const el=document.getElementById('tipo-receta-elegida'); const id=el?el.value:'default'; closeModal(); imprimirReceta(consultaId,id); }
+async function imprimirReceta(consultaId, plantillaId = 'default') {
   // Abrir la ventana inmediatamente durante el toque del usuario: Safari iOS puede bloquearla si se abre después de await.
   let printWindow = null;
   try { printWindow = window.open('', '_blank'); } catch (_) {}
@@ -2208,13 +2219,20 @@ async function imprimirReceta(consultaId) {
   if (!c) return;
   const p = await DB.get(DB.STORES.pacientes, c.pacienteId);
   const m = await DB.get(DB.STORES.medicos, c.medicoId);
+  const plantillas = await DB.getAll('plantillas_receta');
+  const plantilla = plantillaId && plantillaId !== 'default' ? plantillas.find(function(x){return String(x.id)===String(plantillaId);}) : null;
+  if (plantillaId && plantillaId !== 'default' && !plantilla) { if(printWindow&&!printWindow.closed)printWindow.close(); return alert('La plantilla seleccionada ya no existe. Vuelve a elegir el tipo de receta.'); }
   const fechaNacPaciente = obtenerFechaNacimientoPaciente(p);
   const edadPaciente = calcularEdad(fechaNacPaciente);
   const allMeds = await DB.getAll(DB.STORES.medicamentos);
   const allEsts = await DB.getAll(DB.STORES.estudios);
 
   const tieneCedula = m && m.cedula && m.domicilio;
-  const titulo = tieneCedula ? 'RECETA MÉDICA' : 'HOJA DE INDICACIONES';
+  const titulo = plantilla ? (plantilla.encabezado || plantilla.nombre || 'RECETA MÉDICA') : (tieneCedula ? 'RECETA MÉDICA' : 'HOJA DE INDICACIONES');
+  const domicilioReceta = plantilla && plantilla.domicilio ? plantilla.domicilio : (m ? m.domicilio : '');
+  const telefonoReceta = plantilla && plantilla.telefono ? plantilla.telefono : (m ? m.telefono : '');
+  const firmaReceta = plantilla && plantilla.firma ? plantilla.firma : 'Firma Del Medico';
+  const pieReceta = plantilla && plantilla.pie ? plantilla.pie : '';
 
   const medsHtml = (c.medicamentos || []).map(med => {
     const item = allMeds.find(x => x.id === med.medicamentoId);
@@ -2264,8 +2282,8 @@ async function imprimirReceta(consultaId) {
           ${m.especialidad ? 'Especialidad: ' + escapeHtml(m.especialidad) + '<br>' : ''}
           ${m.cedula ? 'Cédula profesional: ' + escapeHtml(m.cedula) + '<br>' : ''}
           ${m.cedulaEsp ? 'Cédula de especialidad: ' + escapeHtml(m.cedulaEsp) + '<br>' : ''}
-          ${m.domicilio ? 'Domicilio: ' + escapeHtml(m.domicilio) + '<br>' : ''}
-          ${m.telefono ? 'Tel: ' + escapeHtml(m.telefono) : ''}
+          ${domicilioReceta ? 'Domicilio: ' + escapeHtml(domicilioReceta) + '<br>' : ''}
+          ${telefonoReceta ? 'Tel: ' + escapeHtml(telefonoReceta) : ''}
         </div>
       ` : ''}
 
@@ -2310,8 +2328,9 @@ async function imprimirReceta(consultaId) {
 
       ${c.proximaCita ? `<p style="margin-top:12px; font-size:10pt;"><strong>Próxima cita:</strong> ${c.proximaCita}</p>` : ''}
 
+      ${pieReceta ? '<p style="margin-top:12px;font-size:9pt;">' + escapeHtml(pieReceta) + '</p>' : ''}
       <div class="rx-signature">
-        <div class="rx-signature-line">Firma Del Medico</div>
+        <div class="rx-signature-line">${escapeHtml(firmaReceta)}</div>
       </div>
 
       <p style="margin-top: 12px; text-align: center; font-style: italic; font-size: 9pt; color: #000;">
@@ -2479,7 +2498,7 @@ window.openCobroModal = openCobroModal;
 window.saveCobro = saveCobro;
 window.marcarPagado = marcarPagado;
 window.imprimirReceta = imprimirReceta;
-window.imprimirRecetaIndependiente = imprimirRecetaIndependiente;
+
 window.imprimirBalance = imprimirBalance;
 window.closeModal = closeModal;
 window.verifyNip = verifyNip;
@@ -2954,76 +2973,16 @@ function calcularEdad(fechaNacimiento) {
 async function renderRecetas() {
   const area = document.getElementById('content-area');
   const plantillas = await DB.getAll('plantillas_receta');
-  const recetas = (await DB.getAll('recetas')).sort(function (a,b) { return String(b.fecha || '').localeCompare(String(a.fecha || '')); });
   const medicos = await DB.getAll(DB.STORES.medicos);
-  const pacientes = await DB.getAll(DB.STORES.pacientes);
-  const medicamentos = await DB.getAll(DB.STORES.medicamentos);
-  area.innerHTML = '<div class="card"><div class="card-header"><div><h3>Receta independiente</h3><p class="text-muted">Crea recetas sin necesidad de abrir una consulta.</p></div>' +
-    '<button class="btn btn-outline" onclick="openPlantillaRecetaModal()">+ Crear plantilla</button></div><div class="card-body">' +
-    '<div class="recipe-banner"><strong>Plantillas por médico</strong><span>Personaliza encabezado, datos profesionales, firma y pie de página. Elige la plantilla al preparar cada receta.</span></div>' +
-    '<div class="form-row"><div class="form-group"><label>Paciente *</label><input class="form-control" id="rec-paciente" list="rec-pacientes-list" placeholder="Escribe para buscar paciente" required><datalist id="rec-pacientes-list">' +
-    pacientes.map(function (p) { return '<option value="' + featureEscape(p.nombre || '') + '"></option>'; }).join('') + '</datalist></div>' +
-    '<div class="form-group"><label>Fecha de nacimiento</label><input class="form-control" id="rec-fecha-nac" readonly placeholder="Se completa desde el expediente"></div>' +
-    '<div class="form-group"><label>Edad</label><input class="form-control" id="rec-edad" readonly placeholder="—"></div>' +
-    '<div class="form-group"><label>Fecha *</label><input class="form-control" id="rec-fecha" type="date" value="' + localDateString(new Date()) + '" required></div></div>' +
-    '<div class="form-row"><div class="form-group"><label>Médico *</label><select class="form-control" id="rec-medico"><option value="">Selecciona médico</option>' +
-    medicos.filter(function (m) { return m.activo !== false; }).map(function (m) { return '<option value="' + m.id + '">' + featureEscape(m.nombre) + ' — ' + featureEscape(m.especialidad || '') + '</option>'; }).join('') +
-    '</select></div><div class="form-group"><label>Plantilla para imprimir *</label><select class="form-control" id="rec-plantilla"><option value="">Selecciona plantilla</option>' +
-    plantillas.map(function (p) { return '<option value="' + p.id + '">' + featureEscape(p.nombre) + '</option>'; }).join('') +
-    '</select></div></div>' +
-    '<div class="form-group"><label>Diagnóstico / motivo</label><textarea class="form-control" id="rec-diagnostico" rows="2"></textarea></div>' +
-    '<div class="form-group"><label>Buscar medicamento en el catálogo</label><input class="form-control" id="rec-med-search" placeholder="Escribe el nombre del medicamento para buscar..." autocomplete="off"><div id="rec-med-results" class="recipe-med-results"></div></div>' +
-    '<div class="form-group"><label>Medicamento(s) seleccionado(s) *</label><textarea class="form-control" id="rec-medicamento" rows="3" placeholder="Selecciona uno o varios medicamentos arriba" required></textarea></div>' +
-    '<div class="form-row"><div class="form-group"><label>Dosis y vía de administración</label><input class="form-control" id="rec-dosis" placeholder="Dosis y vía"></div>' +
-    '<div class="form-group"><label>Frecuencia</label><input class="form-control" id="rec-frecuencia" placeholder="Cada cuánto"></div></div>' +
-    '<div class="form-row"><div class="form-group"><label>Duración</label><input class="form-control" id="rec-duracion" placeholder="Duración indicada"></div>' +
-    '<div class="form-group"><label>Cantidad</label><input class="form-control" id="rec-cantidad" placeholder="Cantidad prescrita"></div></div>' +
-    '<div class="form-group"><label>Indicaciones adicionales</label><textarea class="form-control" id="rec-indicaciones" rows="3"></textarea></div>' +
-    '<button class="btn btn-primary" onclick="guardarRecetaIndependiente()">Guardar receta</button></div></div>' +
-    '<div class="card"><div class="card-header"><h3>Recetas guardadas</h3></div><div class="card-body">' +
-    (recetas.length ? '<div class="table-responsive"><table><thead><tr><th>Fecha</th><th>Paciente</th><th>Médico</th><th>Plantilla</th><th>Acciones</th></tr></thead><tbody>' +
-      recetas.map(function (r) {
-        const m = medicos.find(function (x) { return String(x.id) === String(r.medicoId); });
-        const p = plantillas.find(function (x) { return String(x.id) === String(r.plantillaId); });
-        return '<tr><td>' + featureEscape(r.fecha) + '</td><td>' + featureEscape(r.paciente) + '</td><td>' + featureEscape(m ? m.nombre : '—') +
-          '</td><td>' + featureEscape(p ? p.nombre : 'Plantilla eliminada') + '</td><td><button class="btn btn-primary btn-sm" onclick="imprimirRecetaIndependiente(' + Number(r.id) + ')">Vista previa / imprimir</button></td></tr>';
-      }).join('') + '</tbody></table></div>' : '<div class="empty-state"><p>Aún no hay recetas guardadas.</p></div>') + '</div></div>';
-
-  const pacienteInput = document.getElementById('rec-paciente');
-  pacienteInput.addEventListener('input', function () {
-    const elegido = pacientes.find(function (p) { return String(p.nombre || '').trim().toLocaleLowerCase('es-MX') === pacienteInput.value.trim().toLocaleLowerCase('es-MX'); });
-    const fechaNac = obtenerFechaNacimientoPaciente(elegido);
-    document.getElementById('rec-fecha-nac').value = fechaNac;
-    const edad = fechaNac ? calcularEdad(fechaNac) : null;
-    document.getElementById('rec-edad').value = edad == null ? '' : edad + ' años';
-  });
-  const medSearch = document.getElementById('rec-med-search');
-  medSearch.addEventListener('input', function () {
-    const q = medSearch.value.trim().toLocaleLowerCase('es-MX');
-    const results = document.getElementById('rec-med-results');
-    if (!q) { results.innerHTML = ''; return; }
-    const matches = medicamentos.filter(function (m) {
-      return [m.nombre, m.presentacion, m.concentracion].join(' ').toLocaleLowerCase('es-MX').includes(q);
-    }).slice(0, 12);
-    results.innerHTML = matches.length ? matches.map(function (m) {
-      return '<button type="button" class="recipe-med-result" data-med-id="' + Number(m.id) + '">' +
-        featureEscape(m.nombre || '') + ' — ' + featureEscape(m.presentacion || '') + ' ' + featureEscape(m.concentracion || '') + '</button>';
-    }).join('') : '<p class="text-muted" style="padding:.5rem">No se encontraron medicamentos.</p>';
-    results.querySelectorAll('[data-med-id]').forEach(function (button) {
-      button.addEventListener('click', function () {
-        const med = medicamentos.find(function (m) { return String(m.id) === button.dataset.medId; });
-        if (!med) return;
-        const field = document.getElementById('rec-medicamento');
-        const line = [med.nombre, med.presentacion, med.concentracion].filter(Boolean).join(' — ');
-        field.value = field.value.trim() ? field.value.trim() + '\n' + line : line;
-        medSearch.value = '';
-        results.innerHTML = '';
-        medSearch.focus();
-      });
-    });
-  });
+  area.innerHTML = '<div class="card"><div class="card-header"><div><h3>Plantillas de receta</h3><p class="text-muted">Crea y administra los formatos que el médico podrá elegir al finalizar una consulta.</p></div><button class="btn btn-primary btn-sm" onclick="openPlantillaRecetaModal()">+ Nueva plantilla</button></div><div class="card-body"><div class="recipe-banner"><strong>Receta predeterminada protegida</strong><span>La receta habitual se conserva y seguirá disponible en todas las consultas. Aquí solo administras plantillas adicionales.</span></div>' +
+  (plantillas.length ? '<div class="table-responsive"><table><thead><tr><th>Nombre de plantilla</th><th>Médico titular</th><th>Encabezado</th><th>Acciones</th></tr></thead><tbody>' + plantillas.map(function(p) { const m=medicos.find(function(x){return String(x.id)===String(p.medicoId);}); return '<tr><td><strong>'+featureEscape(p.nombre||'Plantilla sin nombre')+'</strong></td><td>'+featureEscape(m?m.nombre:'—')+'</td><td>'+featureEscape(p.encabezado||'—')+'</td><td><button class="btn btn-outline btn-sm" onclick="openPlantillaRecetaModal('+Number(p.id)+')">Editar</button> <button class="btn btn-danger btn-sm" onclick="eliminarPlantillaReceta('+Number(p.id)+')">Eliminar</button></td></tr>'; }).join('')+'</tbody></table></div>' : '<div class="empty-state"><p>Aún no hay plantillas adicionales. La receta predeterminada seguirá disponible en las consultas.</p></div>')+'</div></div>';
 }
-
+async function eliminarPlantillaReceta(id) {
+  const p=await DB.get('plantillas_receta',id); if(!p)return alert('No se encontró la plantilla.');
+  if(!confirm('¿Eliminar la plantilla "'+(p.nombre||'sin nombre')+'"? La receta predeterminada no se puede eliminar.'))return;
+  try { await DB.remove('plantillas_receta',id); await renderRecetas(); alert('Plantilla eliminada. La receta predeterminada se conservó.'); }
+  catch(e){alert('No se pudo eliminar la plantilla: '+e.message);}
+}
 async function openPlantillaRecetaModal(id) {
   APP.editingId = id || null;
   const modal = document.getElementById('generic-modal');
@@ -3066,74 +3025,6 @@ async function guardarPlantillaReceta() {
   } catch (error) { alert('No se pudo guardar la plantilla: ' + error.message); }
 }
 
-async function guardarRecetaIndependiente() {
-  const paciente = document.getElementById('rec-paciente').value.trim();
-  const fecha = document.getElementById('rec-fecha').value;
-  const medicoId = document.getElementById('rec-medico').value;
-  const plantillaId = document.getElementById('rec-plantilla').value;
-  const medicamento = document.getElementById('rec-medicamento').value.trim();
-  if (!paciente || !fecha || !medicoId || !plantillaId || !medicamento) {
-    return alert('Completa paciente, fecha, médico, plantilla y medicamento.');
-  }
-  const pacientes = await DB.getAll(DB.STORES.pacientes);
-  const pacienteEncontrado = pacientes.find(function (p) { return String(p.nombre || '').trim().toLocaleLowerCase('es-MX') === paciente.toLocaleLowerCase('es-MX'); });
-  const fechaNac = obtenerFechaNacimientoPaciente(pacienteEncontrado);
-  const edadPaciente = fechaNac ? calcularEdad(fechaNac) : null;
-  const data = {
-    paciente: paciente, fechaNacimiento: fechaNac, edad: edadPaciente, fecha: fecha, medicoId: Number(medicoId), plantillaId: Number(plantillaId),
-    diagnostico: document.getElementById('rec-diagnostico').value.trim(),
-    medicamento: medicamento, dosis: document.getElementById('rec-dosis').value.trim(),
-    frecuencia: document.getElementById('rec-frecuencia').value.trim(),
-    duracion: document.getElementById('rec-duracion').value.trim(),
-    cantidad: document.getElementById('rec-cantidad').value.trim(),
-    indicaciones: document.getElementById('rec-indicaciones').value.trim(),
-    elaboradoPor: APP.currentUser, createdAt: new Date().toISOString()
-  };
-  try {
-    const saved = await DB.add('recetas', data);
-    alert('Receta guardada. Puedes abrirla para revisar e imprimir.');
-    await renderRecetas();
-    if (saved && saved.id) imprimirRecetaIndependiente(saved.id);
-  } catch (error) { alert('No se pudo guardar la receta: ' + error.message); }
-}
-
-async function imprimirRecetaIndependiente(id) {
-  try {
-  const r = await DB.get('recetas', id);
-  if (!r) return alert('No se encontró la receta.');
-  const plantillas = await DB.getAll('plantillas_receta');
-  const medicos = await DB.getAll(DB.STORES.medicos);
-  const pacientes = await DB.getAll(DB.STORES.pacientes);
-  const pacienteActual = pacientes.find(function (x) { return String(x.nombre || '').trim().toLocaleLowerCase('es-MX') === String(r.paciente || '').trim().toLocaleLowerCase('es-MX'); });
-  const fechaNacReceta = r.fechaNacimiento || r.fechaNac || obtenerFechaNacimientoPaciente(pacienteActual);
-  const edadReceta = fechaNacReceta ? calcularEdad(fechaNacReceta) : (r.edad != null ? r.edad : null);
-  const p = plantillas.find(function (x) { return String(x.id) === String(r.plantillaId); });
-  const m = medicos.find(function (x) { return String(x.id) === String(r.medicoId); });
-  if (!p) return alert('La plantilla guardada ya no existe. Selecciona una plantilla y crea una receta nueva.');
-  const field = function (label, value) {
-    return value ? '<p style="margin:10px 0"><strong>' + featureEscape(label) + ':</strong> ' + featureEscape(value) + '</p>' : '';
-  };
-  const printArea = document.getElementById('print-area');
-  printArea.innerHTML = '<article class="rx-print" style="font-family:Arial,sans-serif;color:#182235;max-width:760px;margin:0 auto;padding:30px">' +
-    '<header style="border-bottom:2px solid #1d4ed8;padding-bottom:16px;margin-bottom:22px"><h1 style="font-size:25px;margin:0 0 8px">' + featureEscape(p.encabezado || 'RECETA MÉDICA') +
-    '</h1><h2 style="font-size:18px;margin:0">' + featureEscape(m ? m.nombre : 'Médico') + '</h2><p style="margin:5px 0">' + featureEscape(m ? m.especialidad || '' : '') +
-    '</p><p style="margin:4px 0">Cédula profesional: ' + featureEscape(m ? m.cedula || '—' : '—') + '</p>' +
-    '<p style="margin:4px 0">' + featureEscape(p.domicilio || '') + ' ' + featureEscape(p.telefono || '') + '</p></header>' +
-    '<div style="display:flex;justify-content:space-between;gap:20px;margin-bottom:18px"><h3 style="margin:0">RECETA MÉDICA</h3><span>Fecha: ' + featureEscape(r.fecha) + '</span></div>' +
-    '<p style="font-size:17px;border-bottom:1px solid #cbd5e1;padding-bottom:12px"><strong>Paciente:</strong> ' + featureEscape(r.paciente) + '</p>' +
-    '<p><strong>Fecha de nacimiento:</strong> ' + featureEscape(fechaNacReceta ? formatDate(fechaNacReceta) : 'No registrada') + ' &nbsp; <strong>Edad:</strong> ' + featureEscape(edadReceta != null ? String(edadReceta) + ' años' : 'No disponible') + '</p>' +
-    field('Diagnóstico / motivo', r.diagnostico) + '<div style="border:1px solid #cbd5e1;border-radius:8px;padding:18px;margin:22px 0;min-height:130px">' +
-    '<h3 style="margin:0 0 14px">Rp.</h3><p style="font-size:17px;margin:0 0 10px"><strong>' + featureEscape(r.medicamento) + '</strong></p>' +
-    field('Dosis y vía', r.dosis) + field('Frecuencia', r.frecuencia) + field('Duración', r.duracion) + field('Cantidad', r.cantidad) + '</div>' +
-    field('Indicaciones', r.indicaciones) + '<div style="margin-top:80px;text-align:center"><div style="border-top:1px solid #334155;width:260px;margin:0 auto 8px"></div>' +
-    '<p style="margin:0;font-weight:bold">' + featureEscape(p.firma || (m ? m.nombre : 'Firma del médico')) + '</p><p style="margin:3px 0">Cédula: ' + featureEscape(m ? m.cedula || '—' : '—') + '</p></div>' +
-    '<footer style="margin-top:35px;border-top:1px solid #cbd5e1;padding-top:10px;font-size:11px;color:#475569">' + featureEscape(p.pie || '') + '</footer></article>';
-  window.print();
-  } catch (error) {
-    console.error('Error al imprimir receta independiente:', error);
-    alert('No se pudo preparar la impresión de la receta: ' + (error && error.message ? error.message : 'error inesperado') + '. Recarga la página e inténtalo de nuevo.');
-  }
-}
 
 // ========== EMPLEADOS ==========
 async function renderEmpleados() {
