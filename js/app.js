@@ -2258,8 +2258,8 @@ async function imprimirReceta(consultaId, plantillaId = 'default') {
   if (!printArea) throw new Error('No existe el área de impresión en la página.');
   printArea.innerHTML = `
     <style>
-      @page { margin: 10mm; }
-      #print-area .rx-consulta-print { font-family: "Times New Roman", serif; color: #000 !important; font-size: 10pt; line-height: 1.18; max-width: 190mm; margin: 0 auto; }
+      @page { size: letter; margin: ${plantilla && plantilla.fondoImagen ? '0' : '10mm'}; }
+      #print-area .rx-consulta-print { font-family: "Times New Roman", serif; color: #000 !important; font-size: 10pt; line-height: 1.18; max-width: ${plantilla && plantilla.fondoImagen ? '216mm' : '190mm'}; min-height: ${plantilla && plantilla.fondoImagen ? '279mm' : 'auto'}; margin: 0 auto; position: relative; ${plantilla && plantilla.fondoImagen ? 'background-image:url(' + JSON.stringify(plantilla.fondoImagen) + ');background-size:100% 100%;background-repeat:no-repeat;padding:' + Number(plantilla.margenSuperior || 10) + 'mm 10mm 10mm ' + Number(plantilla.margenIzquierdo || 10) + 'mm;-webkit-print-color-adjust:exact;print-color-adjust:exact;' : ''} }
       #print-area .rx-consulta-print * { color: #000 !important; box-sizing: border-box; }
       #print-area .rx-consulta-print h2 { font-size: 15pt; }
       #print-area .rx-consulta-print h3 { font-size: 11pt; margin: 8px 0 4px !important; break-after: avoid; page-break-after: avoid; }
@@ -2270,7 +2270,7 @@ async function imprimirReceta(consultaId, plantillaId = 'default') {
       #print-area .rx-consulta-print .rx-signature-line { border-top: 1px solid #000; width: 220px; max-width: 75%; margin: 0 auto 4px; padding-top: 4px; }
       @media print { #print-area .rx-consulta-print { max-width: none; margin: 0; } }
     </style>
-    <div class="rx-consulta-print" style="font-family: 'Times New Roman', serif; max-width: 800px; margin: 0 auto;">
+    <div class="rx-consulta-print" style="font-family: 'Times New Roman', serif; max-width: ${plantilla && plantilla.fondoImagen ? '216mm' : '800px'}; margin: 0 auto;">
       <div style="text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 15px;">
         <h2 style="margin:0; font-size: 18pt;">${titulo}</h2>
       </div>
@@ -3194,3 +3194,28 @@ function escEnf(valor) {
     "'": '&#39;'
   })[caracter]);
 }
+
+
+// Evita que el navegador sugiera usuarios/contraseñas guardados en campos de texto clínicos.
+(function protegerCamposClinicosDeAutorrelleno() {
+  function proteger(root) {
+    if (!root || !root.querySelectorAll) return;
+    root.querySelectorAll('input, textarea').forEach(function(el) {
+      const type = (el.getAttribute('type') || 'text').toLowerCase();
+      const id = (el.id || '').toLowerCase();
+      const name = (el.name || '').toLowerCase();
+      if (type === 'password' || /login|usuario|username|staff-password/.test(id + ' ' + name)) return;
+      if (['text','search','email','tel','url','number'].includes(type) || el.tagName === 'TEXTAREA') {
+        el.setAttribute('autocomplete', 'new-password');
+        el.setAttribute('autocorrect', 'off');
+        el.setAttribute('autocapitalize', 'off');
+        el.setAttribute('spellcheck', 'false');
+        if (!el.name) el.setAttribute('name', 'campo-clinico-' + Math.random().toString(36).slice(2, 10));
+      }
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){proteger(document);});
+  else proteger(document);
+  const observer = new MutationObserver(function(records){records.forEach(function(r){r.addedNodes.forEach(function(n){if(n.nodeType===1){proteger(n); if(n.matches && n.matches('input,textarea')) proteger(n.parentNode);}});});});
+  observer.observe(document.documentElement, {childList:true,subtree:true});
+})();
