@@ -870,3 +870,50 @@ body.tema-suave {
     print-color-adjust: exact !important;
   }
 }
+
+
+/* ========== CHAT LEGIBLE EN MODO NOCTURNO ========== */
+.tema-suave .chat-messages {
+  background: #202630;
+  border-top: 1px solid #485261;
+}
+.tema-suave .chat-message {
+  background: #343d49;
+  color: #f1f5f9;
+  border-color: #536071;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, .2);
+}
+.tema-suave .chat-message-own {
+  background: #173b61;
+  color: #f4f8ff;
+  border-color: #3474ad;
+}
+.tema-suave .chat-message-meta strong {
+  color: #b9d7ff;
+}
+.tema-suave .chat-message-meta span {
+  color: #c0cad7;
+}
+.tema-suave .chat-message-text {
+  color: #f1f5f9;
+}
+.tema-suave .chat-live {
+  color: #bbf7d0;
+  background: #14532d;
+}
+.tema-suave .chat-compose {
+  background: #303640;
+  border-top-color: #4b535f;
+}
+.tema-suave .chat-compose textarea {
+  background: #202630;
+  color: #f1f5f9;
+  border-color: #596779;
+}
+.tema-suave .chat-compose textarea::placeholder {
+  color: #b6c1cf;
+}
+.tema-suave .chat-note {
+  color: #c0cad7;
+  background: #303640;
+}
