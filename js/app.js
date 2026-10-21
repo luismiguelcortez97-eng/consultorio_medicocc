@@ -1021,10 +1021,8 @@ function openConsultaModal() {
       <div class="form-row" style="align-items:end;">
         <div class="form-group" style="flex:2;">
           <label>Estudio</label>
-          <input type="text" class="form-control" id="add-est-id" list="add-est-lab-options" placeholder="Escribe para buscar un estudio..." autocomplete="off" autocapitalize="off" spellcheck="false">
-          <datalist id="add-est-lab-options">
-            ${ests.map(e => `<option value="${escapeAttr(e.nombre)}" data-id="${e.id}"></option>`).join('')}
-          </datalist>
+          <input type="text" class="form-control" id="add-est-id" name="clinical-lab-study-search" placeholder="Escribe para buscar un estudio..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" aria-label="Buscar estudio de laboratorio">
+          <div id="add-est-lab-results" class="study-search-results" role="listbox" style="display:none;max-height:180px;overflow-y:auto;border:1px solid var(--border-color, #9aaac0);border-radius:8px;margin-top:4px;"></div>
         </div>
         <div class="form-group">
           <button type="button" class="btn btn-outline" onclick="addEstToConsulta()">Agregar</button>
@@ -1038,7 +1036,7 @@ function openConsultaModal() {
         <div class="form-group" style="flex:2;">
           <label>Seleccionar estudio de imagen</label>
           <input type="text" class="form-control" id="add-est-imagen-search" name="clinical-imaging-study-search" placeholder="Escribe para buscar un estudio de imagen..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" aria-label="Buscar estudio de imagen">
-          <div id="add-est-imagen-results" class="study-search-results" role="listbox" style="display:none;max-height:180px;overflow-y:auto;border:1px solid #9aaac0;border-radius:8px;margin-top:4px;background:#fff;color:#202938;"></div>
+          <div id="add-est-imagen-results" class="study-search-results" role="listbox" style="display:none;max-height:180px;overflow-y:auto;border:1px solid var(--border-color, #9aaac0);border-radius:8px;margin-top:4px;"></div>
         </div>
         <div class="form-group">
           <button type="button" class="btn btn-outline" onclick="addEstImagenToConsulta()">Agregar</button>
@@ -1072,13 +1070,30 @@ function openConsultaModal() {
         pacienteSearch.setCustomValidity('');
       }
     });
+    const labSearchInput = document.getElementById('add-est-id');
+    const labResults = document.getElementById('add-est-lab-results');
+    const renderLabResults = () => {
+      const q = labSearchInput.value.trim().toLocaleLowerCase('es-MX');
+      const matches = q ? ests.filter(e => (e.nombre || '').toLocaleLowerCase('es-MX').includes(q)).slice(0, 12) : [];
+      labResults.innerHTML = matches.map(e => '<button type="button" role="option" class="study-search-option" data-study-id="' + Number(e.id) + '" style="display:block;width:100%;text-align:left;padding:.65rem .75rem;border:0;border-bottom:1px solid var(--border-color, #e4e8ef);background:transparent;color:var(--text-color, inherit);cursor:pointer;">' + escapeHtml(e.nombre || '') + '</button>').join('');
+      labResults.style.display = matches.length ? 'block' : 'none';
+      labResults.querySelectorAll('[data-study-id]').forEach(button => button.addEventListener('click', () => {
+        const chosen = ests.find(e => String(e.id) === button.dataset.studyId);
+        if (chosen) labSearchInput.value = chosen.nombre;
+        labResults.style.display = 'none';
+        labSearchInput.focus();
+      }));
+    };
+    labSearchInput.addEventListener('input', renderLabResults);
+    labSearchInput.addEventListener('focus', renderLabResults);
+    labSearchInput.addEventListener('blur', () => setTimeout(() => { if (labResults) labResults.style.display = 'none'; }, 180));
     const imagenSearchInput = document.getElementById('add-est-imagen-search');
     const imagenResults = document.getElementById('add-est-imagen-results');
     imagenSearchInput.setAttribute('autocomplete', 'off');
     imagenSearchInput.addEventListener('input', () => {
       const q = imagenSearchInput.value.trim().toLocaleLowerCase('es-MX');
       const matches = q ? estudiosImagenCatalogo.filter(nombre => nombre.toLocaleLowerCase('es-MX').includes(q)).slice(0, 12) : [];
-      imagenResults.innerHTML = matches.map(nombre => '<button type="button" role="option" class="study-search-option" data-study-name="' + escapeAttr(nombre) + '" style="display:block;width:100%;text-align:left;padding:.65rem .75rem;border:0;border-bottom:1px solid #e4e8ef;background:#fff;color:#202938;cursor:pointer;">' + escapeHtml(nombre) + '</button>').join('');
+      imagenResults.innerHTML = matches.map(nombre => '<button type="button" role="option" class="study-search-option" data-study-name="' + escapeAttr(nombre) + '" style="display:block;width:100%;text-align:left;padding:.65rem .75rem;border:0;border-bottom:1px solid var(--border-color, #e4e8ef);background:transparent;color:var(--text-color, inherit);cursor:pointer;">' + escapeHtml(nombre) + '</button>').join('');
       imagenResults.style.display = matches.length ? 'block' : 'none';
       imagenResults.querySelectorAll('[data-study-name]').forEach(button => button.addEventListener('click', () => {
         imagenSearchInput.value = button.dataset.studyName;
@@ -1182,10 +1197,7 @@ async function addEstToConsulta() {
         estudio = actualizados.find(e => (e.nombre || '').trim().toLocaleLowerCase('es-MX') === nombre.toLocaleLowerCase('es-MX'));
       }
       if (!estudio || !estudio.id) return alert('No se pudo guardar el estudio en el catálogo.');
-      const options = document.getElementById('add-est-lab-options');
-      if (options && ![...options.options].some(o => o.value.toLocaleLowerCase('es-MX') === nombre.toLocaleLowerCase('es-MX'))) {
-        options.appendChild(new Option(estudio.nombre));
-      }
+
     }
     if (APP.tempConsulta.estudios.some(e => String(e) === String(estudio.id))) {
       alert('Este estudio ya está agregado');
