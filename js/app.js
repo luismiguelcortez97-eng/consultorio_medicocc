@@ -1037,7 +1037,7 @@ function openConsultaModal() {
       <div class="form-row" style="align-items:end;">
         <div class="form-group" style="flex:2;">
           <label>Seleccionar estudio de imagen</label>
-          <input type="text" class="form-control" id="add-est-imagen-search" list="add-est-imagen-options" placeholder="Escribe para buscar un estudio de imagen..." autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Buscar estudio de imagen">
+          <input type="text" class="form-control" id="add-est-imagen-search" name="clinical-imaging-study-search" list="add-est-imagen-options" placeholder="Escribe para buscar un estudio de imagen..." autocomplete="new-password" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" aria-label="Buscar estudio de imagen">
           <datalist id="add-est-imagen-options">
             ${estudiosImagenCatalogo.map(nombre => `<option value="${escapeAttr(nombre)}"></option>`).join('')}
           </datalist>
