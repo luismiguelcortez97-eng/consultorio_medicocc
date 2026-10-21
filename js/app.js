@@ -1035,8 +1035,10 @@ function openConsultaModal() {
       <div class="form-row" style="align-items:end;">
         <div class="form-group" style="flex:2;">
           <label>Seleccionar estudio de imagen</label>
-          <input type="text" class="form-control" id="add-est-imagen-search" name="clinical-imaging-study-search" placeholder="Escribe para buscar un estudio de imagen..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" aria-label="Buscar estudio de imagen">
-          <div id="add-est-imagen-results" class="study-search-results" role="listbox" style="display:none;max-height:180px;overflow-y:auto;border:1px solid var(--border-color, #9aaac0);border-radius:8px;margin-top:4px;"></div>
+          <input type="text" class="form-control" id="add-est-imagen-search" name="clinical-imaging-study-search" list="add-est-imagen-options" placeholder="Escribe para buscar un estudio de imagen..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" aria-label="Buscar estudio de imagen">
+          <datalist id="add-est-imagen-options">
+            ${estudiosImagenCatalogo.map(nombre => `<option value="${escapeAttr(nombre)}"></option>`).join('')}
+          </datalist>
         </div>
         <div class="form-group">
           <button type="button" class="btn btn-outline" onclick="addEstImagenToConsulta()">Agregar</button>
@@ -1088,24 +1090,9 @@ function openConsultaModal() {
     labSearchInput.addEventListener('focus', renderLabResults);
     labSearchInput.addEventListener('blur', () => setTimeout(() => { if (labResults) labResults.style.display = 'none'; }, 180));
     const imagenSearchInput = document.getElementById('add-est-imagen-search');
-    const imagenResults = document.getElementById('add-est-imagen-results');
     imagenSearchInput.setAttribute('autocomplete', 'off');
     imagenSearchInput.addEventListener('input', () => {
-      const q = imagenSearchInput.value.trim().toLocaleLowerCase('es-MX');
-      const matches = q ? estudiosImagenCatalogo.filter(nombre => nombre.toLocaleLowerCase('es-MX').includes(q)).slice(0, 12) : [];
-      imagenResults.innerHTML = matches.map(nombre => '<button type="button" role="option" class="study-search-option" data-study-name="' + escapeAttr(nombre) + '" style="display:block;width:100%;text-align:left;padding:.65rem .75rem;border:0;border-bottom:1px solid var(--border-color, #e4e8ef);background:transparent;color:var(--text-color, inherit);cursor:pointer;">' + escapeHtml(nombre) + '</button>').join('');
-      imagenResults.style.display = matches.length ? 'block' : 'none';
-      imagenResults.querySelectorAll('[data-study-name]').forEach(button => button.addEventListener('click', () => {
-        imagenSearchInput.value = button.dataset.studyName;
-        imagenResults.style.display = 'none';
-        imagenSearchInput.focus();
-      }));
-    });
-    imagenSearchInput.addEventListener('blur', () => {
-      setTimeout(() => { if (imagenResults) imagenResults.style.display = 'none'; }, 180);
-    });
-    imagenSearchInput.addEventListener('focus', () => {
-      if (imagenSearchInput.value.trim()) imagenSearchInput.dispatchEvent(new Event('input'));
+      // El datalist nativo muestra las coincidencias con el mismo tipo de lista que laboratorio.
     });
     const medSearchInput = document.getElementById('add-med-search');
     medSearchInput.addEventListener('input', function () {
