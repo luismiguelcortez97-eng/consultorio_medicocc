@@ -982,7 +982,7 @@ function openConsultaModal() {
       <div class="form-row" style="align-items:end;">
         <div class="form-group">
           <label>Buscar medicamento</label>
-          <input type="text" class="form-control" id="add-med-search" placeholder="Escribe para buscar medicamento..." autocomplete="off">
+          <input type="text" class="form-control" id="add-med-search" name="clinical-medication-search-field" placeholder="Escribe para buscar medicamento..." autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" readonly onfocus="this.removeAttribute('readonly')">
           <div id="add-med-results" class="recipe-med-results"></div>
           <select class="form-control" id="add-med-id" style="display:none">
             <option value="">— Seleccione —</option>
@@ -1030,7 +1030,7 @@ function openConsultaModal() {
       <div class="form-row" style="align-items:end;">
         <div class="form-group" style="flex:2;">
           <label>Buscar estudio de imagen</label>
-          <input type="text" class="form-control" id="add-est-imagen-search" list="estudios-imagen-options" placeholder="Escribe o selecciona un estudio..." autocomplete="off">
+          <input type="text" class="form-control" id="add-est-imagen-search" name="clinical-imaging-search-field" list="estudios-imagen-options" placeholder="Escribe o selecciona un estudio..." autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" readonly onfocus="this.removeAttribute('readonly')">
           <datalist id="estudios-imagen-options">
             ${estudiosImagenCatalogo.map(nombre => `<option value="${escapeAttr(nombre)}"></option>`).join('')}
           </datalist>
@@ -3222,26 +3222,30 @@ function escEnf(valor) {
 }
 
 
-// Evita que el navegador sugiera usuarios/contraseñas guardados en campos de texto clínicos.
+// Evita el autocompletado de credenciales en campos clínicos. Chrome/Edge pueden ignorar autocomplete="off",
+// por lo que los campos de texto se mantienen readonly hasta que el usuario los enfoca.
 (function protegerCamposClinicosDeAutorrelleno() {
   function proteger(root) {
     if (!root || !root.querySelectorAll) return;
     root.querySelectorAll('input, textarea').forEach(function(el) {
-      const type = (el.getAttribute('type') || 'text').toLowerCase();
-      const id = (el.id || '').toLowerCase();
-      const name = (el.name || '').toLowerCase();
-      if (type === 'password' || /login|usuario|username|staff-password/.test(id + ' ' + name)) return;
-      if (['text','search','email','tel','url','number'].includes(type) || el.tagName === 'TEXTAREA') {
-        el.setAttribute('autocomplete', 'new-password');
-        el.setAttribute('autocorrect', 'off');
-        el.setAttribute('autocapitalize', 'off');
-        el.setAttribute('spellcheck', 'false');
-        if (!el.name) el.setAttribute('name', 'campo-clinico-' + Math.random().toString(36).slice(2, 10));
+      const type=(el.getAttribute('type')||'text').toLowerCase();
+      const id=(el.id||'').toLowerCase(), name=(el.name||'').toLowerCase();
+      if(type==='password'||/login|usuario|username|staff-password/.test(id+' '+name))return;
+      if(!(['text','search','email','tel','url','number'].includes(type)||el.tagName==='TEXTAREA'))return;
+      el.setAttribute('autocomplete','new-password');
+      el.setAttribute('autocorrect','off');
+      el.setAttribute('autocapitalize','off');
+      el.setAttribute('spellcheck','false');
+      if(!el.name || /^(name|username|email|search|password)$/i.test(el.name)) el.name='clinical-field-'+Math.random().toString(36).slice(2,10);
+      if(!el.dataset.autofillGuard){
+        el.dataset.autofillGuard='1';
+        el.setAttribute('readonly','readonly');
+        el.addEventListener('focus',function(){el.removeAttribute('readonly');},{once:true});
       }
     });
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){proteger(document);});
-  else proteger(document);
-  const observer = new MutationObserver(function(records){records.forEach(function(r){r.addedNodes.forEach(function(n){if(n.nodeType===1){proteger(n); if(n.matches && n.matches('input,textarea')) proteger(n.parentNode);}});});});
-  observer.observe(document.documentElement, {childList:true,subtree:true});
+  function init(){proteger(document);}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+  const observer=new MutationObserver(function(records){records.forEach(function(r){r.addedNodes.forEach(function(n){if(n.nodeType===1){proteger(n);if(n.matches&&n.matches('input,textarea'))proteger(n.parentNode);}});});});
+  observer.observe(document.documentElement,{childList:true,subtree:true});
 })();
