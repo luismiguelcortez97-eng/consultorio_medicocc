@@ -1056,10 +1056,15 @@ function addMedToConsulta() {
     frecuencia: document.getElementById('add-med-freq').value.trim() || '—',
     duracion: document.getElementById('add-med-dur').value.trim() || '—'
   });
+  // Limpia toda la captura para poder agregar el siguiente medicamento.
+  document.getElementById('add-med-id').value = '';
+  document.getElementById('add-med-search').value = '';
+  document.getElementById('add-med-results').innerHTML = '';
   document.getElementById('add-med-dosis').value = '';
   document.getElementById('add-med-via').value = '';
   document.getElementById('add-med-freq').value = '';
   document.getElementById('add-med-dur').value = '';
+  document.getElementById('add-med-search').focus();
   renderTempMeds();
 }
 
