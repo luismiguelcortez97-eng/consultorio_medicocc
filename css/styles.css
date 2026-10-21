@@ -834,3 +834,39 @@ body.tema-suave {
 .recipe-med-results { display:flex; flex-direction:column; gap:4px; margin-top:6px; max-height:220px; overflow:auto; }
 .recipe-med-result { width:100%; text-align:left; padding:9px 11px; border:1px solid var(--border); border-radius:6px; background:#fff; color:#212529; cursor:pointer; font:inherit; }
 .recipe-med-result:hover, .recipe-med-result:focus { background:#eef5ff; border-color:var(--primary); }
+
+/* Impresión optimizada para Safari en iPhone: sacar la interfaz de la paginación. */
+@media print {
+  html, body {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+  body > *:not(#print-area) {
+    display: none !important;
+    visibility: hidden !important;
+  }
+  #print-area {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    max-width: none !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
+  #print-area * {
+    visibility: visible !important;
+    color: #000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
