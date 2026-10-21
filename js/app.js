@@ -906,10 +906,14 @@ function openConsultaModal() {
     body.innerHTML = `
       <div class="form-row">
         <div class="form-group">
-          <label>Paciente *</label>
-          <select class="form-control" id="c-pacienteId" required>
+          <label for="c-paciente-search">Buscar paciente *</label>
+          <input type="text" class="form-control" id="c-paciente-search" list="c-paciente-options" placeholder="Escribe el nombre del paciente..." autocomplete="new-password" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" required>
+          <datalist id="c-paciente-options">
+            ${pacientes.map(p => `<option value="${escapeAttr(p.nombre)}"></option>`).join('')}
+          </datalist>
+          <select id="c-pacienteId" aria-hidden="true" tabindex="-1" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;">
             <option value="">— Seleccione —</option>
-            ${pacientes.map(p => `<option value="${p.id}">${escapeHtml(p.nombre)}</option>`).join('')}
+            ${pacientes.map(p => `<option value="${p.id}" data-nombre="${escapeAttr(p.nombre)}">${escapeHtml(p.nombre)}</option>`).join('')}
           </select>
         </div>
         <div class="form-group">
@@ -1055,8 +1059,20 @@ function openConsultaModal() {
       <button class="btn btn-primary" onclick="saveConsulta()">Guardar Consulta</button>
     `;
 
-    document.getElementById('c-pacienteId').addEventListener('change', event => {
-      cargarSignosVitalesEnfermeria(event.target.value);
+    const pacienteSearch = document.getElementById('c-paciente-search');
+    const pacienteIdSelect = document.getElementById('c-pacienteId');
+    pacienteSearch.addEventListener('input', () => {
+      const nombre = pacienteSearch.value.trim().toLocaleLowerCase('es-MX');
+      const coincidencia = pacientes.find(p => (p.nombre || '').trim().toLocaleLowerCase('es-MX') === nombre);
+      pacienteIdSelect.value = coincidencia ? String(coincidencia.id) : '';
+      if (coincidencia) cargarSignosVitalesEnfermeria(coincidencia.id);
+    });
+    pacienteSearch.addEventListener('change', () => {
+      if (!pacienteIdSelect.value) {
+        pacienteSearch.setCustomValidity('Selecciona un paciente existente de la lista.');
+      } else {
+        pacienteSearch.setCustomValidity('');
+      }
     });
     const medSearchInput = document.getElementById('add-med-search');
     medSearchInput.addEventListener('input', function () {
