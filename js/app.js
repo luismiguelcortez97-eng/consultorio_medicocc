@@ -2197,6 +2197,9 @@ async function importData(event) {
 
 // ========== PRINT RECETA ==========
 async function imprimirReceta(consultaId) {
+  // Abrir la ventana inmediatamente durante el toque del usuario: Safari iOS puede bloquearla si se abre después de await.
+  let printWindow = null;
+  try { printWindow = window.open('', '_blank'); } catch (_) {}
   try {
   const c = await DB.get(DB.STORES.consultas, consultaId);
   if (!c) return;
@@ -2316,9 +2319,50 @@ async function imprimirReceta(consultaId) {
   `;
 
   if (!printArea) throw new Error('No existe el área de impresión en la página.');
-  window.print();
-  if (confirm('Receta preparada. ¿Deseas registrar ahora el cobro de esta consulta?')) {
-    await registrarCobroConsulta(consultaId);
+
+  if (printWindow && !printWindow.closed) {
+    // Documento aislado: evita que Safari tenga que paginar toda la aplicación clínica.
+    printWindow.document.open();
+    printWindow.document.write(`<!doctype html>
+      <html lang="es">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>${escapeHtml(titulo)}</title>
+        <style>
+          @page { size: auto; margin: 10mm; }
+          html, body { margin: 0; padding: 0; width: 100%; height: auto; background: #fff; color: #000; }
+          body { font-family: "Times New Roman", serif; -webkit-text-size-adjust: 100%; }
+          #print-area { display: block; width: 100%; margin: 0; padding: 0; color: #000; }
+          #print-area * { color: #000 !important; box-sizing: border-box; }
+          table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+          tr, .rx-signature { break-inside: avoid; page-break-inside: avoid; }
+          @media print {
+            html, body { height: auto !important; overflow: visible !important; }
+            #print-area { position: static !important; width: 100% !important; }
+          }
+        </style>
+      </head>
+      <body><div id="print-area">${printArea.innerHTML}</div></body>
+      </html>`);
+    printWindow.document.close();
+    printWindow.onafterprint = () => {
+      try { printWindow.close(); } catch (_) {}
+      if (confirm('Receta preparada. ¿Deseas registrar ahora el cobro de esta consulta?')) {
+        registrarCobroConsulta(consultaId);
+      }
+    };
+    // Esperar a que Safari termine de construir el documento pequeño antes de abrir imprimir.
+    printWindow.onload = () => {
+      printWindow.focus();
+      printWindow.print();
+    };
+  } else {
+    // Respaldo si Safari bloquea las ventanas emergentes.
+    window.print();
+    if (confirm('Receta preparada. ¿Deseas registrar ahora el cobro de esta consulta?')) {
+      await registrarCobroConsulta(consultaId);
+    }
   }
   } catch (error) {
     console.error('Error al imprimir receta desde Consultas:', error);
