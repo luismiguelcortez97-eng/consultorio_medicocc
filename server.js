@@ -6,6 +6,7 @@ const { Pool } = require('pg');
 const crypto = require('crypto');
 const path = require('path');
 const { initMembershipDb, registerMembershipRoutes } = require('./membership-server');
+const { publicAppointmentSlots, appointmentConflicts, isMembershipActive, membershipMatchesPerson } = require('./appointment-logic');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -774,7 +775,7 @@ function publicDateIsValid(value) {
 }
 const DEFAULT_PUBLIC_APPOINTMENT_SETTINGS={days:[1,2,3,4,5,6],startHour:9,endHour:17,whatsapp:'',notificationWhatsapp:'',notificationEmail:'',phone:''};
 async function getPublicAppointmentSettings(db=pool){const r=await db.query("SELECT data FROM app_records WHERE store='config' AND record_key=$1",['public_appointments_settings']);const raw=r.rowCount?((r.rows[0].data||{}).value||{}):{};const days=Array.isArray(raw.days)?[...new Set(raw.days.map(Number).filter(d=>Number.isInteger(d)&&d>=0&&d<=6))]:DEFAULT_PUBLIC_APPOINTMENT_SETTINGS.days;const clean=v=>typeof v==='string'&&/^[+()\d .-]{0,25}$/.test(v.trim())?v.trim():'';const notificationEmail=typeof raw.notificationEmail==='string'&&raw.notificationEmail.length<=254&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw.notificationEmail.trim())?raw.notificationEmail.trim():'';return{days,startHour:Number.isInteger(Number(raw.startHour))?Math.max(0,Math.min(23,Number(raw.startHour))):9,endHour:Number.isInteger(Number(raw.endHour))?Math.max(1,Math.min(24,Number(raw.endHour))):17,whatsapp:clean(raw.whatsapp),notificationWhatsapp:clean(raw.notificationWhatsapp),notificationEmail,phone:clean(raw.phone)};}
-function publicAppointmentSlots(settings=DEFAULT_PUBLIC_APPOINTMENT_SETTINGS, fecha=''){const day=fecha?new Date(fecha+'T00:00:00Z').getUTCDay():1;const end=day===6?14*60+30:18*60+30;const start=9*60+30;const slots=[];for(let t=start;t<=end;t+=60)slots.push(String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0'));return slots;}
+
 async function getPublicAgenda(client) {
   const result = await client.query("SELECT data FROM app_records WHERE store='agenda'");
   return result.rows.map(row => row.data);
@@ -961,10 +962,8 @@ app.post('/api/public/appointments', publicAppointmentLimiter, async (req, res, 
     if (tipoPaciente === 'membresia') {
       const memberResult = await client.query("SELECT m.full_name AS \"fullName\", m.birth_date AS \"birthDate\", a.start_at AS \"startsAt\", a.expires_at AS \"expiresAt\", a.canceled_at AS \"canceledAt\", a.status AS \"accountStatus\" FROM membership_members m JOIN membership_accounts a ON a.id=m.account_id WHERE m.folio=$1", [folioMembresia]);
       member = memberResult.rows[0] || null;
-      const normalizeName = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-      const active = member && !member.canceledAt && member.startsAt && member.expiresAt && new Date(member.startsAt).getTime() <= Date.now() && new Date(member.expiresAt).getTime() > Date.now();
-      if (!active) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'El folio no corresponde a una membresía activa. Revisa el folio o selecciona cita particular.' }); }
-      if (normalizeName(member.fullName) !== normalizeName(nombre) || String(member.birthDate).slice(0,10) !== fechaNacimiento) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'El folio no coincide con el nombre y la fecha de nacimiento del integrante. Verifica los datos.' }); }
+      if (!isMembershipActive(member)) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'El folio no corresponde a una membresía activa. Revisa el folio o selecciona cita particular.' }); }
+      if (!membershipMatchesPerson(member, nombre, fechaNacimiento)) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'El folio no coincide con el nombre y la fecha de nacimiento del integrante. Verifica los datos.' }); }
     }
     const doctorResult = await client.query("SELECT data FROM app_records WHERE store='medicos' AND record_key=$1", [String(medicoId)]);
     if (!doctorResult.rowCount || doctorResult.rows[0].data.activo === false) {
@@ -972,15 +971,7 @@ app.post('/api/public/appointments', publicAppointmentLimiter, async (req, res, 
       return res.status(400).json({ error: 'El médico seleccionado ya no está disponible.' });
     }
     const appointments = await getPublicAgenda(client);
-    const start = Number(hora.slice(0, 2)) * 60 + Number(hora.slice(3, 5));
-    const conflict = appointments.some(c => {
-      if (!c || String(c.medicoId) !== String(medicoId) || c.fecha !== fecha ||
-          ['Cancelada', 'Eliminada'].includes(String(c.estado || ''))) return false;
-      const time = String(c.hora || '').slice(0, 5);
-      if (!/^\d{2}:\d{2}$/.test(time)) return false;
-      const begin = Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
-      return begin < start + 60 && begin + 60 > start;
-    });
+    const conflict = appointmentConflicts(appointments, medicoId, fecha, hora);
     if (conflict) {
       await client.query('ROLLBACK');
       return res.status(409).json({ error: 'Ese horario acaba de ocuparse. Selecciona otro horario disponible.' });
