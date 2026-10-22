@@ -652,6 +652,8 @@ app.post('/api/consultas/:id/registrar-cobro', requireAuth, async (req, res, nex
       [String(cobroId), cobro]
     );
     await client.query('COMMIT');
+    try { await sendWhatsAppAppointmentNotification(record, await getPublicAppointmentSettings()); }
+    catch (notificationError) { console.error('No se pudo enviar la notificación de nueva cita por WhatsApp:', notificationError.message); }
     res.status(201).json({ cobro, duplicate: false });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
@@ -768,8 +770,8 @@ function publicDateIsValid(value) {
   const days = Math.floor((parsed.getTime() - today.getTime()) / 86400000);
   return days >= 0 && days <= 90;
 }
-const DEFAULT_PUBLIC_APPOINTMENT_SETTINGS={days:[1,2,3,4,5,6],startHour:9,endHour:17,whatsapp:'',phone:''};
-async function getPublicAppointmentSettings(db=pool){const r=await db.query("SELECT data FROM app_records WHERE store='config' AND record_key=$1",['public_appointments_settings']);const raw=r.rowCount?((r.rows[0].data||{}).value||{}):{};const days=Array.isArray(raw.days)?[...new Set(raw.days.map(Number).filter(d=>Number.isInteger(d)&&d>=0&&d<=6))]:DEFAULT_PUBLIC_APPOINTMENT_SETTINGS.days;const clean=v=>typeof v==='string'&&/^[+()\d .-]{0,25}$/.test(v.trim())?v.trim():'';return{days,startHour:Number.isInteger(Number(raw.startHour))?Math.max(0,Math.min(23,Number(raw.startHour))):9,endHour:Number.isInteger(Number(raw.endHour))?Math.max(1,Math.min(24,Number(raw.endHour))):17,whatsapp:clean(raw.whatsapp),phone:clean(raw.phone)};}
+const DEFAULT_PUBLIC_APPOINTMENT_SETTINGS={days:[1,2,3,4,5,6],startHour:9,endHour:17,whatsapp:'',notificationWhatsapp:'',phone:''};
+async function getPublicAppointmentSettings(db=pool){const r=await db.query("SELECT data FROM app_records WHERE store='config' AND record_key=$1",['public_appointments_settings']);const raw=r.rowCount?((r.rows[0].data||{}).value||{}):{};const days=Array.isArray(raw.days)?[...new Set(raw.days.map(Number).filter(d=>Number.isInteger(d)&&d>=0&&d<=6))]:DEFAULT_PUBLIC_APPOINTMENT_SETTINGS.days;const clean=v=>typeof v==='string'&&/^[+()\\d .-]{0,25}$/.test(v.trim())?v.trim():'';return{days,startHour:Number.isInteger(Number(raw.startHour))?Math.max(0,Math.min(23,Number(raw.startHour))):9,endHour:Number.isInteger(Number(raw.endHour))?Math.max(1,Math.min(24,Number(raw.endHour))):17,whatsapp:clean(raw.whatsapp),notificationWhatsapp:clean(raw.notificationWhatsapp),phone:clean(raw.phone)};}
 function publicAppointmentSlots(settings=DEFAULT_PUBLIC_APPOINTMENT_SETTINGS){if(settings.endHour<=settings.startHour)return[];return Array.from({length:settings.endHour-settings.startHour},(_,i)=>String(settings.startHour+i).padStart(2,'0')+':00');}
 async function getPublicAgenda(client) {
   const result = await client.query("SELECT data FROM app_records WHERE store='agenda'");
@@ -827,8 +829,9 @@ app.delete('/api/admin/public-appointments/:id', requireAuth, requireAdmin, asyn
   } catch(error){next(error);}
 });
 
-app.get('/api/public/booking-settings',async(_req,res,next)=>{try{res.set('Cache-Control','no-store');res.json({settings:await getPublicAppointmentSettings()});}catch(e){next(e);}});
-app.put('/api/admin/public-booking-settings',requireAuth,requireAdmin,async(req,res,next)=>{try{const b=req.body||{},days=Array.isArray(b.days)?[...new Set(b.days.map(Number))]:[],startHour=Number(b.startHour),endHour=Number(b.endHour),whatsapp=typeof b.whatsapp==='string'?b.whatsapp.trim():'',phone=typeof b.phone==='string'?b.phone.trim():'';if(!days.length||days.some(d=>!Number.isInteger(d)||d<0||d>6)||!Number.isInteger(startHour)||startHour<0||startHour>23||!Number.isInteger(endHour)||endHour<1||endHour>24||endHour<=startHour||(whatsapp&&!/^[+()\d .-]{7,25}$/.test(whatsapp))||(phone&&!/^[+()\d .-]{7,25}$/.test(phone)))return res.status(400).json({error:'Revisa días, horario y teléfonos.'});const settings={days,startHour,endHour,whatsapp,phone};await pool.query("INSERT INTO app_records(store, record_key, data) VALUES('config',$1,$2) ON CONFLICT(store,record_key) DO UPDATE SET data=EXCLUDED.data, updated_at=NOW()",['public_appointments_settings',{key:'public_appointments_settings',value:settings}]);res.json({ok:true,settings});}catch(e){next(e);}});
+app.get('/api/public/booking-settings',async(_req,res,next)=>{try{const s=await getPublicAppointmentSettings();res.set('Cache-Control','no-store');res.json({settings:{days:s.days,startHour:s.startHour,endHour:s.endHour,whatsapp:s.whatsapp,phone:s.phone}});}catch(e){next(e);}});
+app.get('/api/admin/public-booking-settings',requireAuth,requireAdmin,async(_req,res,next)=>{try{res.set('Cache-Control','no-store');res.json({settings:await getPublicAppointmentSettings(),notificationConfigured:Boolean(process.env.WHATSAPP_ACCESS_TOKEN&&process.env.WHATSAPP_PHONE_NUMBER_ID&&process.env.WHATSAPP_TEMPLATE_NAME)});}catch(e){next(e);}});
+app.put('/api/admin/public-booking-settings',requireAuth,requireAdmin,async(req,res,next)=>{try{const b=req.body||{},days=Array.isArray(b.days)?[...new Set(b.days.map(Number))]:[],startHour=Number(b.startHour),endHour=Number(b.endHour),whatsapp=typeof b.whatsapp==='string'?b.whatsapp.trim():'',notificationWhatsapp=typeof b.notificationWhatsapp==='string'?b.notificationWhatsapp.trim():'',phone=typeof b.phone==='string'?b.phone.trim():'';if(!days.length||days.some(d=>!Number.isInteger(d)||d<0||d>6)||!Number.isInteger(startHour)||startHour<0||startHour>23||!Number.isInteger(endHour)||endHour<1||endHour>24||endHour<=startHour||(whatsapp&&!/^[+()\\d .-]{7,25}$/.test(whatsapp))||(notificationWhatsapp&&!/^[+()\\d .-]{7,25}$/.test(notificationWhatsapp))||(phone&&!/^[+()\\d .-]{7,25}$/.test(phone)))return res.status(400).json({error:'Revisa días, horario y teléfonos.'});const settings={days,startHour,endHour,whatsapp,notificationWhatsapp,phone};await pool.query("INSERT INTO app_records(store, record_key, data) VALUES('config',$1,$2) ON CONFLICT(store,record_key) DO UPDATE SET data=EXCLUDED.data, updated_at=NOW()",['public_appointments_settings',{key:'public_appointments_settings',value:settings}]);res.json({ok:true,settings,notificationConfigured:Boolean(process.env.WHATSAPP_ACCESS_TOKEN&&process.env.WHATSAPP_PHONE_NUMBER_ID&&process.env.WHATSAPP_TEMPLATE_NAME)});}catch(e){next(e);}});
 app.get('/api/public/appointment-doctors', async (_req, res, next) => {
   try {
     const result = await pool.query("SELECT data FROM app_records WHERE store='medicos'");
@@ -873,6 +876,16 @@ app.get('/api/public/appointment-availability', async (req, res, next) => {
     res.json({ fecha, medicoId, horarios });
   } catch (error) { next(error); }
 });
+async function sendWhatsAppAppointmentNotification(appointment, settings) {
+  const token=process.env.WHATSAPP_ACCESS_TOKEN, phoneNumberId=process.env.WHATSAPP_PHONE_NUMBER_ID, templateName=process.env.WHATSAPP_TEMPLATE_NAME;
+  const recipient=String(settings.notificationWhatsapp||'').replace(/\\D/g,'');
+  if(!token||!phoneNumberId||!templateName||!recipient){console.warn('Aviso WhatsApp omitido: falta número de destino o configuración de WhatsApp Cloud API.');return false;}
+  const params=[String(appointment.paciente||'Paciente'),String(appointment.fecha||''),String(appointment.hora||''),String(appointment.telefonoContacto||'')].map(value=>({type:'text',text:value.slice(0,120)}));
+  const response=await fetch('https://graph.facebook.com/v22.0/'+encodeURIComponent(phoneNumberId)+'/messages',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({messaging_product:'whatsapp',to:recipient,type:'template',template:{name:templateName,language:{code:process.env.WHATSAPP_TEMPLATE_LANGUAGE||'es_MX'},components:[{type:'body',parameters:params}]}})});
+  if(!response.ok){const detail=await response.text().catch(()=> '');throw new Error('WhatsApp Cloud API respondió '+response.status+': '+detail.slice(0,500));}
+  return true;
+}
+
 app.post('/api/public/appointments', publicAppointmentLimiter, async (req, res, next) => {
   const body = req.body || {};
   const nombre = typeof body.nombre === 'string' ? body.nombre.trim().replace(/\s+/g, ' ') : '';
