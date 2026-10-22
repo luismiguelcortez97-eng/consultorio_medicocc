@@ -96,3 +96,13 @@ test('la ruta de citas toma un bloqueo transaccional antes de revisar e insertar
   assert.ok(lock >= 0 && read > lock && insert > read, 'el bloqueo debe adquirirse antes de comprobar e insertar');
   assert.match(route, /if \(conflict\)[\s\S]*?status\(409\)/, 'debe rechazar conflictos con HTTP 409');
 });
+
+
+test('el flujo de membresías usa transferencias SPEI y protege comprobantes', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'membership-server.js'), 'utf8');
+  assert.match(source, /receipt_data BYTEA/);
+  assert.match(source, /api\\/public\\/memberships\\/:paymentId\\/receipt/);
+  assert.match(source, /api\\/admin\\/memberships\\/payments\\/:paymentId\\/review/);
+  assert.match(source, /Solo puedes eliminar el comprobante después de confirmar el pago/);
+  assert.doesNotMatch(source, /MP_ACCESS_TOKEN|api\\.mercadopago\\.com/);
+});
