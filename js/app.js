@@ -2861,10 +2861,9 @@ async function renderAgenda() {
   const citas = await DB.getAll('agenda');
   const pacientes = await DB.getAll(DB.STORES.pacientes);
   const medicos = await DB.getAll(DB.STORES.medicos);
-  const citaPacientePorId = function (id) { return citas.find(function (c) { return c.pacienteId == null && String(c.id) === String(id); })?.paciente || ''; };
   const patientName = function (id) {
     const p = pacientes.find(function (x) { return String(x.id) === String(id); });
-    return p ? p.nombre : (citaPacientePorId(id) || 'Paciente no disponible');
+    return p ? p.nombre : 'Paciente no disponible';
   };
   const doctorName = function (id) {
     const m = medicos.find(function (x) { return String(x.id) === String(id); });
@@ -2880,7 +2879,7 @@ async function renderAgenda() {
       '<span class="agenda-day-number">' + day + '</span>' +
       (dayCitas.length ? '<span class="agenda-day-count">' + dayCitas.length + ' cita' + (dayCitas.length === 1 ? '' : 's') + '</span>' : '') +
       dayCitas.slice(0, 2).map(function (c) {
-        return '<span class="agenda-day-event">' + featureEscape(c.hora || '') + ' ' + featureEscape(patientName(c.pacienteId)) + '</span>';
+        return '<span class="agenda-day-event">' + featureEscape(c.hora || '') + ' ' + featureEscape(c.paciente || patientName(c.pacienteId)) + '</span>';
       }).join('') +
       (dayCitas.length > 2 ? '<span class="agenda-day-more">+' + (dayCitas.length - 2) + ' más</span>' : '') +
       '</button>';
@@ -2900,10 +2899,10 @@ async function renderAgenda() {
     '<div class="card"><div class="card-header"><h3>Citas del ' + featureEscape(APP.agendaSelectedDate) + '</h3>' +
     '<button class="btn btn-primary btn-sm" onclick="openAgendaModal(null,\'' + APP.agendaSelectedDate + '\')">+ Agendar este día</button></div>' +
     '<div class="card-body">' +
-    (APP.agendaSelectedDate === localDateString(new Date()) ? '<div class="alert alert-info"><strong>Notificación de hoy:</strong> ' + (citasDia.filter(function(c){return c.estado !== 'Cancelada';}).length ? citasDia.filter(function(c){return c.estado !== 'Cancelada';}).sort(function(a,b){return String(a.hora||'').localeCompare(String(b.hora||''));}).map(function(c){return featureEscape(c.hora || 'Sin hora') + ' — ' + featureEscape(patientName(c.pacienteId)) + ' (' + featureEscape(doctorName(c.medicoId)) + ')';}).join('<br>') : 'No hay citas programadas para hoy.') + '</div>' : '') +
+    (APP.agendaSelectedDate === localDateString(new Date()) ? '<div class="alert alert-info"><strong>Notificación de hoy:</strong> ' + (citasDia.filter(function(c){return c.estado !== 'Cancelada';}).length ? citasDia.filter(function(c){return c.estado !== 'Cancelada';}).sort(function(a,b){return String(a.hora||'').localeCompare(String(b.hora||''));}).map(function(c){return featureEscape(c.hora || 'Sin hora') + ' — ' + featureEscape(c.paciente || patientName(c.pacienteId)) + ' (' + featureEscape(doctorName(c.medicoId)) + ')';}).join('<br>') : 'No hay citas programadas para hoy.') + '</div>' : '') +
     (citasDia.length ? '<div class="table-responsive"><table><thead><tr><th>Hora</th><th>Paciente</th><th>Médico</th><th>Motivo</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>' +
       citasDia.map(function (c) {
-        return '<tr><td>' + featureEscape(c.hora || '—') + '</td><td><strong>' + featureEscape(patientName(c.pacienteId)) + '</strong></td>' +
+        return '<tr><td>' + featureEscape(c.hora || '—') + '</td><td><strong>' + featureEscape(c.paciente || patientName(c.pacienteId)) + '</strong></td>' +
           '<td>' + featureEscape(doctorName(c.medicoId)) + '</td><td>' + featureEscape(c.motivo || '—') + '</td>' +
           '<td>' + featureEscape(c.estado || 'Programada') + '</td><td>' +
           (c.estado === 'Cancelada' || c.estado === 'Eliminada' ? '<button class="btn btn-danger btn-sm" onclick="eliminarCitaAgenda(' + Number(c.id) + ')">Eliminar</button>' : '<button class="btn btn-success btn-sm" onclick="confirmarCitaAgenda(' + Number(c.id) + ')">' + (c.estado === 'Confirmada' ? 'Confirmada ✓' : 'Confirmar') + '</button> <button class="btn btn-outline btn-sm" onclick="openAgendaModal(' + Number(c.id) + ')">Editar</button> <button class="btn btn-danger btn-sm" onclick="cancelarCitaAgenda(' + Number(c.id) + ')">No se llevará a cabo</button>') + '</td></tr>';
