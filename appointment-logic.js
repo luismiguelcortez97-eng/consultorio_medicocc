@@ -33,7 +33,7 @@ function appointmentConflicts(appointments, medicoId, fecha, hora, duration = AP
 }
 
 function minutesOf(value) {
-  const match = /^(\\d{2}):(\\d{2})$/.exec(String(value || '').slice(0, 5));
+  const match = /^(\d{2}):(\d{2})$/.exec(String(value || '').slice(0, 5));
   if (!match) return -1;
   const hour = Number(match[1]);
   const minute = Number(match[2]);
