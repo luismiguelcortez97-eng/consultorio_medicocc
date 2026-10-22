@@ -114,7 +114,7 @@ function showApp() {
   aplicarTemaGuardado();
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
-  ['personal', 'empleados', 'balance'].forEach(function (module) {
+  ['personal', 'empleados', 'balance', 'citasweb'].forEach(function (module) {
     const item = document.querySelector('.nav-item[data-module="' + module + '"]');
     if (item) item.style.display = APP.currentRole === 'admin' ? 'flex' : 'none';
   });
@@ -195,7 +195,7 @@ async function navigateTo(module) {
     clearInterval(APP.chatTimer);
     APP.chatTimer = null;
   }
-  if (['personal', 'empleados', 'balance'].includes(module) && APP.currentRole !== 'admin') {
+  if (['personal', 'empleados', 'balance', 'citasweb'].includes(module) && APP.currentRole !== 'admin') {
     alert('Esta sección es exclusiva del administrador.');
     return;
   }
@@ -220,6 +220,7 @@ async function navigateTo(module) {
     pacientes: 'Pacientes y Expedientes',
     consultas: 'Consultas Médicas',
     agenda: 'Agenda mensual de consultas',
+    citasweb: 'Configuración de citas web',
     chat: 'Chat interno del personal',
     recetas: 'Receta independiente',
     personal: 'Accesos del personal',
@@ -245,6 +246,7 @@ async function navigateTo(module) {
       case 'pacientes': await renderPacientes(); break;
       case 'consultas': await renderConsultas(); break;
       case 'agenda': await renderAgenda(); break;
+      case 'citasweb': await renderCitasWeb(); break;
       case 'chat': await renderChat(); break;
       case 'recetas': await renderRecetas(); break;
       case 'personal': await renderPersonal(); break;
@@ -261,6 +263,15 @@ async function navigateTo(module) {
     console.error(err);
     area.innerHTML = `<div class="alert alert-danger">Error al cargar el módulo: ${err.message}</div>`;
   }
+}
+
+
+async function renderCitasWeb() {
+ const area=document.getElementById('content-area'),days=[['0','Domingo'],['1','Lunes'],['2','Martes'],['3','Miércoles'],['4','Jueves'],['5','Viernes'],['6','Sábado']];
+ area.innerHTML=`<div class="card"><div class="card-header"><div><h3>Configuración de la página de citas</h3><p class="text-muted">Configura los horarios y los teléfonos que verán los pacientes.</p></div></div><div class="card-body"><form id="citasweb-form"><h4>Días de atención</h4><div class="citasweb-days">${days.map(d=>'<label class="citasweb-day"><input type="checkbox" name="citasweb-day" value="'+d[0]+'"><span>'+d[1]+'</span></label>').join('')}</div><div class="form-row mt-3"><div class="form-group"><label for="citasweb-start">Hora de inicio</label><select class="form-control" id="citasweb-start">${Array.from({length:24},(_,i)=>'<option value="'+i+'">'+String(i).padStart(2,'0')+':00</option>').join('')}</select></div><div class="form-group"><label for="citasweb-end">Hora de término</label><select class="form-control" id="citasweb-end">${Array.from({length:24},(_,i)=>'<option value="'+(i+1)+'">'+String(i+1).padStart(2,'0')+':00</option>').join('')}<option value="24">24:00</option></select></div></div><hr><h4>WhatsApp del consultorio</h4><div class="form-group"><label for="citasweb-whatsapp">Número de WhatsApp con lada</label><input class="form-control" id="citasweb-whatsapp" type="tel" maxlength="25" placeholder="+52 686 123 4567"></div><h4>Teléfono para llamadas</h4><div class="form-group"><label for="citasweb-phone">Número telefónico con lada</label><input class="form-control" id="citasweb-phone" type="tel" maxlength="25" placeholder="+52 686 123 4567"></div><div id="citasweb-status" role="status" aria-live="polite"></div><button class="btn btn-primary mt-2" id="citasweb-save" type="submit">Guardar configuración</button></form></div></div><style>.citasweb-days{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}.citasweb-day{display:flex;align-items:center;gap:8px;padding:10px;border:1px solid var(--border-color,#d7dee8);border-radius:8px}.citasweb-day input{width:18px;height:18px}</style>`;
+ const form=document.getElementById('citasweb-form'),status=document.getElementById('citasweb-status'),save=document.getElementById('citasweb-save');
+ try{const r=await fetch('/api/public/booking-settings',{credentials:'same-origin'}),d=await r.json();if(!r.ok)throw Error(d.error||'No se pudo cargar.');const s=d.settings||{},chosen=Array.isArray(s.days)?s.days.map(String):['1','2','3','4','5','6'];form.querySelectorAll('[name="citasweb-day"]').forEach(x=>x.checked=chosen.includes(x.value));document.getElementById('citasweb-start').value=String(s.startHour??9);document.getElementById('citasweb-end').value=String(s.endHour??17);document.getElementById('citasweb-whatsapp').value=s.whatsapp||'';document.getElementById('citasweb-phone').value=s.phone||'';}catch(e){status.className='alert alert-danger';status.textContent=e.message;}
+ form.addEventListener('submit',async e=>{e.preventDefault();const s={days:Array.from(form.querySelectorAll('[name="citasweb-day"]:checked')).map(x=>Number(x.value)),startHour:Number(document.getElementById('citasweb-start').value),endHour:Number(document.getElementById('citasweb-end').value),whatsapp:document.getElementById('citasweb-whatsapp').value.trim(),phone:document.getElementById('citasweb-phone').value.trim()};if(!s.days.length||s.endHour<=s.startHour){status.className='alert alert-warning';status.textContent='Selecciona días y un horario válido.';return;}if([s.whatsapp,s.phone].some(n=>n&&!/^[+()\\d .-]{7,25}$/.test(n))){status.className='alert alert-warning';status.textContent='Revisa los números telefónicos.';return;}save.disabled=true;try{const r=await fetch('/api/admin/public-booking-settings',{method:'PUT',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(s)}),d=await r.json();if(!r.ok)throw Error(d.error||'No se pudo guardar.');status.className='alert alert-success';status.textContent='Configuración guardada correctamente.';}catch(err){status.className='alert alert-danger';status.textContent=err.message;}finally{save.disabled=false;}});
 }
 
 // ========== NIP PROTECTION ==========
