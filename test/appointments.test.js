@@ -79,7 +79,7 @@ test('el folio debe coincidir con nombre y fecha de nacimiento', () => {
 
 test('la disponibilidad respeta horarios configurados y libera citas canceladas', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
-  assert.match(source, /publicAppointmentSlots\(settings, fecha\)/);
+  assert.match(source, /publicAppointmentSlots\(settings, fecha, tipoPaciente\)/);
   assert.match(source, /const appointmentSettings = await getPublicAppointmentSettings\(\)/);
   assert.match(source, /'cancelada', 'cancelado', 'eliminada', 'eliminado', 'canceled', 'cancelled', 'deleted'/);
 });
