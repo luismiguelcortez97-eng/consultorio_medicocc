@@ -830,7 +830,7 @@ app.delete('/api/admin/public-appointments/:id', requireAuth, requireAdmin, asyn
 });
 
 app.get('/api/public/booking-settings',async(_req,res,next)=>{try{const s=await getPublicAppointmentSettings();res.set('Cache-Control','no-store');res.json({settings:{days:s.days,startHour:s.startHour,endHour:s.endHour,whatsapp:s.whatsapp,phone:s.phone}});}catch(e){next(e);}});
-app.get('/api/admin/public-booking-settings',requireAuth,requireAdmin,async(_req,res,next)=>{try{res.set('Cache-Control','no-store');res.json({settings:await getPublicAppointmentSettings(),notificationConfigured:Boolean(process.env.WHATSAPP_ACCESS_TOKEN&&process.env.WHATSAPP_PHONE_NUMBER_ID&&process.env.WHATSAPP_TEMPLATE_NAME)});}catch(e){next(e);}});
+app.get('/api/admin/public-booking-settings',requireAuth,requireAdmin,async(_req,res,next)=>{try{res.set('Cache-Control','no-store');res.json({settings:await getPublicAppointmentSettings(),notificationConfigured:Boolean(process.env.BREVO_API_KEY&&process.env.BREVO_SENDER_EMAIL),emailNotificationConfigured:Boolean(process.env.BREVO_API_KEY&&process.env.BREVO_SENDER_EMAIL)});}catch(e){next(e);}});
 app.put('/api/admin/public-booking-settings',requireAuth,requireAdmin,async(req,res,next)=>{try{const b=req.body||{},days=Array.isArray(b.days)?[...new Set(b.days.map(Number))]:[],startHour=Number(b.startHour),endHour=Number(b.endHour),whatsapp=typeof b.whatsapp==='string'?b.whatsapp.trim():'',notificationWhatsapp=typeof b.notificationWhatsapp==='string'?b.notificationWhatsapp.trim():'',notificationEmail=typeof b.notificationEmail==='string'?b.notificationEmail.trim():'',phone=typeof b.phone==='string'?b.phone.trim():'';if(!days.length||days.some(d=>!Number.isInteger(d)||d<0||d>6)||!Number.isInteger(startHour)||startHour<0||startHour>23||!Number.isInteger(endHour)||endHour<1||endHour>24||endHour<=startHour||(whatsapp&&!/^[+()\d .-]{7,25}$/.test(whatsapp))||(notificationWhatsapp&&!/^[+()\d .-]{7,25}$/.test(notificationWhatsapp))||(phone&&!/^[+()\d .-]{7,25}$/.test(phone))||(notificationEmail&&(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notificationEmail)||notificationEmail.length>254)))return res.status(400).json({error:'Revisa días, horario, teléfonos y correo electrónico.'});const settings={days,startHour,endHour,whatsapp,notificationWhatsapp,notificationEmail,phone};await pool.query("INSERT INTO app_records(store, record_key, data) VALUES('config',$1,$2) ON CONFLICT(store,record_key) DO UPDATE SET data=EXCLUDED.data, updated_at=NOW()",['public_appointments_settings',{key:'public_appointments_settings',value:settings}]);res.json({ok:true,settings,notificationConfigured:Boolean(process.env.WHATSAPP_ACCESS_TOKEN&&process.env.WHATSAPP_PHONE_NUMBER_ID&&process.env.WHATSAPP_TEMPLATE_NAME)});}catch(e){next(e);}});
 app.get('/api/public/appointment-doctors', async (_req, res, next) => {
   try {
@@ -876,6 +876,17 @@ app.get('/api/public/appointment-availability', async (req, res, next) => {
     res.json({ fecha, medicoId, horarios });
   } catch (error) { next(error); }
 });
+async function sendEmailAppointmentNotification(appointment, settings) {
+  const apiKey=process.env.BREVO_API_KEY;
+  const senderEmail=process.env.BREVO_SENDER_EMAIL;
+  const recipient=String(settings.notificationEmail||'').trim();
+  if(!apiKey||!senderEmail||!recipient){console.warn('Aviso por correo omitido: configura BREVO_API_KEY, BREVO_SENDER_EMAIL y el correo destinatario.');return false;}
+  const text='Se recibió una nueva solicitud de cita en Consultorio Médico CC.\n\nPaciente: '+String(appointment.paciente||'Paciente')+'\nFecha: '+String(appointment.fecha||'')+'\nHora: '+String(appointment.hora||'')+'\nTeléfono: '+String(appointment.telefonoContacto||'')+'\nMotivo: '+String(appointment.motivo||appointment.tipoCita||'')+'\n\nEntra al sistema para revisar y confirmar la solicitud.';
+  const response=await fetch('https://api.brevo.com/v3/smtp/email',{method:'POST',headers:{'api-key':apiKey,'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify({sender:{name:'Consultorio Médico CC',email:senderEmail},to:[{email:recipient}],subject:'Nueva solicitud de cita - Consultorio Médico CC',textContent:text}) ,signal:AbortSignal.timeout(10000)});
+  if(!response.ok){const detail=await response.text().catch(()=> '');throw new Error('Brevo respondió '+response.status+': '+detail.slice(0,400));}
+  return true;
+}
+
 async function sendWhatsAppAppointmentNotification(appointment, settings) {
   const token=process.env.WHATSAPP_ACCESS_TOKEN, phoneNumberId=process.env.WHATSAPP_PHONE_NUMBER_ID, templateName=process.env.WHATSAPP_TEMPLATE_NAME;
   const recipient=String(settings.notificationWhatsapp||'').replace(/\D/g,'');
@@ -943,6 +954,8 @@ app.post('/api/public/appointments', publicAppointmentLimiter, async (req, res, 
     };
     await client.query("INSERT INTO app_records(store, record_key, data) VALUES('agenda', $1, $2)", [String(id), record]);
     await client.query('COMMIT');
+    try { await sendEmailAppointmentNotification(record, await getPublicAppointmentSettings()); }
+    catch (notificationError) { console.error('No se pudo enviar la notificación de nueva cita por correo:', notificationError.message); }
     res.status(201).json({
       ok: true, codigoVerificacion: codigo,
       cita: { fecha, hora, medico: String(doctorResult.rows[0].data.nombre || ''), tipo }
