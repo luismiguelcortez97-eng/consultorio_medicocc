@@ -74,12 +74,12 @@ test('el folio debe coincidir con nombre y fecha de nacimiento', () => {
 test('la ruta de citas toma un bloqueo transaccional antes de revisar e insertar', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
   const start = source.indexOf("app.post('/api/public/appointments'");
-  const end = source.indexOf("app.get(\\n  '/api/data/:store'", start);
+  const end = source.indexOf("app.get(\n  '/api/data/:store'", start);
   assert.ok(start >= 0 && end > start, 'debe existir la ruta de citas públicas');
   const route = source.slice(start, end);
   const lock = route.indexOf("pg_advisory_xact_lock");
   const read = route.indexOf('getPublicAgenda(client)');
   const insert = route.indexOf("INSERT INTO app_records(store, record_key, data) VALUES('agenda'");
   assert.ok(lock >= 0 && read > lock && insert > read, 'el bloqueo debe adquirirse antes de comprobar e insertar');
-  assert.match(route, /if \\(conflict\\)[\\s\\S]*?status\\(409\\)/, 'debe rechazar conflictos con HTTP 409');
+  assert.match(route, /if \(conflict\)[\s\S]*?status\(409\)/, 'debe rechazar conflictos con HTTP 409');
 });
