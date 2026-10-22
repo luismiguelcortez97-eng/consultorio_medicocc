@@ -733,6 +733,136 @@ app.get('/api/balance/cobros', requireAuth, requireAdmin, (req, res, next) => {
     .catch(next);
 });
 
+
+const publicAppointmentLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 12,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiadas solicitudes. Intenta nuevamente en unos minutos.' }
+});
+const PUBLIC_APPOINTMENT_TYPES = new Set([
+  'Cita médica', 'Certificado médico', 'Otros síntomas', 'Presión alta', 'Lectura de estudios'
+]);
+function publicDateIsValid(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(value + 'T00:00:00Z');
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) return false;
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const days = Math.floor((parsed.getTime() - today.getTime()) / 86400000);
+  return days >= 0 && days <= 90;
+}
+function publicAppointmentSlots() {
+  return Array.from({ length: 8 }, (_, i) => String(i + 9).padStart(2, '0') + ':00');
+}
+async function getPublicAgenda(client) {
+  const result = await client.query("SELECT data FROM app_records WHERE store='agenda'");
+  return result.rows.map(row => row.data);
+}
+app.get('/api/public/appointment-doctors', async (_req, res, next) => {
+  try {
+    const result = await pool.query("SELECT data FROM app_records WHERE store='medicos'");
+    const doctors = result.rows.map(row => row.data)
+      .filter(m => m && m.id != null && m.activo !== false && String(m.nombre || '').trim())
+      .map(m => ({ id: Number(m.id), nombre: String(m.nombre).trim() }))
+      .filter(m => Number.isSafeInteger(m.id) && m.id > 0)
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+    res.set('Cache-Control', 'no-store');
+    res.json(doctors);
+  } catch (error) { next(error); }
+});
+app.get('/api/public/appointment-availability', async (req, res, next) => {
+  try {
+    const fecha = String(req.query.fecha || '');
+    const medicoId = Number(req.query.medicoId);
+    if (!publicDateIsValid(fecha) || !Number.isSafeInteger(medicoId) || medicoId < 1) {
+      return res.status(400).json({ error: 'Selecciona una fecha y un médico válidos dentro de los próximos 90 días.' });
+    }
+    const doctorResult = await pool.query("SELECT data FROM app_records WHERE store='medicos' AND record_key=$1", [String(medicoId)]);
+    if (!doctorResult.rowCount || doctorResult.rows[0].data.activo === false) {
+      return res.status(404).json({ error: 'El médico seleccionado no está disponible.' });
+    }
+    const appointments = await getPublicAgenda(pool);
+    const occupied = appointments.filter(c => c && String(c.medicoId) === String(medicoId) &&
+      c.fecha === fecha && !['Cancelada', 'Eliminada'].includes(String(c.estado || '')))
+      .map(c => String(c.hora || '').slice(0, 5));
+    const horarios = publicAppointmentSlots().filter(slot => {
+      const start = Number(slot.slice(0, 2)) * 60;
+      return !occupied.some(time => {
+        if (!/^\d{2}:\d{2}$/.test(time)) return false;
+        const begin = Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
+        return begin < start + 60 && begin + 60 > start;
+      });
+    });
+    res.set('Cache-Control', 'no-store');
+    res.json({ fecha, medicoId, horarios });
+  } catch (error) { next(error); }
+});
+app.post('/api/public/appointments', publicAppointmentLimiter, async (req, res, next) => {
+  const body = req.body || {};
+  const nombre = typeof body.nombre === 'string' ? body.nombre.trim().replace(/\s+/g, ' ') : '';
+  const telefono = typeof body.telefono === 'string' ? body.telefono.trim() : '';
+  const medicoId = Number(body.medicoId);
+  const fecha = String(body.fecha || '');
+  const hora = String(body.hora || '');
+  const tipo = String(body.tipo || '');
+  const otroMotivo = typeof body.otroMotivo === 'string' ? body.otroMotivo.trim().replace(/\s+/g, ' ') : '';
+  if (nombre.length < 2 || nombre.length > 120 || !/^[+()\d .-]{7,25}$/.test(telefono) ||
+      !Number.isSafeInteger(medicoId) || medicoId < 1 || !publicDateIsValid(fecha) ||
+      !publicAppointmentSlots().includes(hora) || !PUBLIC_APPOINTMENT_TYPES.has(tipo) ||
+      (tipo === 'Otros síntomas' && (!otroMotivo || otroMotivo.split(/\s+/).length > 50)) ||
+      (tipo !== 'Otros síntomas' && otroMotivo)) {
+    return res.status(400).json({ error: 'Revisa los datos. Si eliges “Otros síntomas”, describe el motivo en máximo 50 palabras.' });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock($1, $2)', [medicoId, Number(fecha.replace(/-/g, ''))]);
+    const doctorResult = await client.query("SELECT data FROM app_records WHERE store='medicos' AND record_key=$1", [String(medicoId)]);
+    if (!doctorResult.rowCount || doctorResult.rows[0].data.activo === false) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'El médico seleccionado ya no está disponible.' });
+    }
+    const appointments = await getPublicAgenda(client);
+    const start = Number(hora.slice(0, 2)) * 60;
+    const conflict = appointments.some(c => {
+      if (!c || String(c.medicoId) !== String(medicoId) || c.fecha !== fecha ||
+          ['Cancelada', 'Eliminada'].includes(String(c.estado || ''))) return false;
+      const time = String(c.hora || '').slice(0, 5);
+      if (!/^\d{2}:\d{2}$/.test(time)) return false;
+      const begin = Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
+      return begin < start + 60 && begin + 60 > start;
+    });
+    if (conflict) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Ese horario acaba de ocuparse. Selecciona otro horario disponible.' });
+    }
+    const seq = await client.query(
+      "INSERT INTO app_sequences(store, next_id) VALUES('agenda', 1) ON CONFLICT(store) DO UPDATE SET next_id = app_sequences.next_id + 1 RETURNING next_id"
+    );
+    const id = Number(seq.rows[0].next_id);
+    const codigo = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+    const now = new Date().toISOString();
+    const record = {
+      id, pacienteId: null, paciente: nombre, telefonoContacto: telefono,
+      fecha, hora, medicoId, motivo: tipo === 'Otros síntomas' ? otroMotivo : tipo,
+      tipoCita: tipo, estado: 'Solicitud web',
+      codigoVerificacionHash: crypto.createHash('sha256').update(codigo).digest('hex'),
+      creadoPor: 'portal-publico', createdAt: now, updatedAt: now
+    };
+    await client.query("INSERT INTO app_records(store, record_key, data) VALUES('agenda', $1, $2)", [String(id), record]);
+    await client.query('COMMIT');
+    res.status(201).json({
+      ok: true, codigoVerificacion: codigo,
+      cita: { fecha, hora, medico: String(doctorResult.rows[0].data.nombre || ''), tipo }
+    });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(error);
+  } finally { client.release(); }
+});
+
 app.get(
   '/api/data/:store',
   requireAuth,
