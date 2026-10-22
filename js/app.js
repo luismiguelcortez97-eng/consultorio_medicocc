@@ -2926,7 +2926,7 @@ async function renderAgenda() {
           (c.creadoPor === 'portal-publico' ? '<div class="text-muted" style="font-size:.8rem">' +
             (c.edad != null ? 'Edad: ' + featureEscape(c.edad) + ' años' : '') +
             (c.fechaNacimiento ? ' · Nacimiento: ' + featureEscape(c.fechaNacimiento) : '') +
-            (c.telefonoContacto ? '<br>Tel. ' + featureEscape(c.telefonoContacto) : '') + '</div>' : '') + '</td>' +
+            (c.telefonoContacto ? '<br>Tel. ' + featureEscape(c.telefonoContacto) : '') + '</div>' : '') + (c.tipoPaciente ? '<div class="text-muted" style="font-size:.82rem"><strong>' + (c.tipoPaciente === 'membresia' ? 'Paciente con membresía' : 'Paciente particular') + '</strong>' + (c.tipoPaciente === 'membresia' ? '<br>Folio: ' + featureEscape(c.folioMembresia || '—') : '') + '</div>' : '') + '</td>' +
           '<td>' + featureEscape(doctorName(c.medicoId)) + '</td><td>' + featureEscape(c.motivo || '—') + '</td>' +
           '<td>' + featureEscape(c.estado || 'Programada') + '</td><td>' +
           (c.estado !== 'Cancelada' && c.estado !== 'Eliminada' ? '<button class="btn btn-success btn-sm" onclick="confirmarCitaAgenda(' + Number(c.id) + ')">' + (c.estado === 'Confirmada' ? 'Asistencia confirmada ✓' : 'Confirmar asistencia') + '</button> ' + (c.creadoPor === 'portal-publico' ? '' : '<button class="btn btn-outline btn-sm" onclick="openAgendaModal(' + Number(c.id) + ')">Editar</button> ') + '<button class="btn btn-warning btn-sm" onclick="cancelarCitaAgenda(' + Number(c.id) + ')">Cancelar cita</button> ' : '') + '<button class="btn btn-danger btn-sm" onclick="eliminarCitaAgenda(' + Number(c.id) + ')">Eliminar cita</button></td></tr>';
