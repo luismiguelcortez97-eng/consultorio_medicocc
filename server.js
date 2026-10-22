@@ -799,13 +799,13 @@ app.post('/api/public/appointments/verify', publicAppointmentLimiter, async (req
     res.json({ ok:true, citas });
   } catch (error) { next(error); }
 });
-app.get('/api/admin/public-appointments', requireAuth, requireAdmin, async (_req, res, next) => {
+app.get('/api/admin/public-appointments', requireAuth, async (_req, res, next) => {
   try {
     const result = await pool.query("SELECT data FROM app_records WHERE store='agenda' AND data->>'creadoPor'='portal-publico' AND COALESCE(data->>'estado','') NOT IN ('Eliminada','Eliminado') ORDER BY data->>'fecha', data->>'hora'");
     res.set('Cache-Control','no-store'); res.json(result.rows.map(row=>row.data));
   } catch (error) { next(error); }
 });
-app.put('/api/admin/public-appointments/:id/confirm', requireAuth, requireAdmin, async (req, res, next) => {
+app.put('/api/admin/public-appointments/:id/confirm', requireAuth, async (req, res, next) => {
   try {
     const id=Number(req.params.id);
     if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'Solicitud inválida.'});
@@ -818,7 +818,7 @@ app.put('/api/admin/public-appointments/:id/confirm', requireAuth, requireAdmin,
     res.json({ok:true,cita:saved.rows[0].data});
   } catch(error){next(error);}
 });
-app.delete('/api/admin/public-appointments/:id', requireAuth, requireAdmin, async (req, res, next) => {
+app.delete('/api/admin/public-appointments/:id', requireAuth, async (req, res, next) => {
   try {
     const id=Number(req.params.id);
     if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'Solicitud inválida.'});
@@ -830,7 +830,7 @@ app.delete('/api/admin/public-appointments/:id', requireAuth, requireAdmin, asyn
 });
 
 app.get('/api/public/booking-settings',async(_req,res,next)=>{try{const s=await getPublicAppointmentSettings();res.set('Cache-Control','no-store');res.json({settings:{days:s.days,startHour:s.startHour,endHour:s.endHour,whatsapp:s.whatsapp,phone:s.phone}});}catch(e){next(e);}});
-app.get('/api/admin/public-booking-settings',requireAuth,requireAdmin,async(_req,res,next)=>{try{res.set('Cache-Control','no-store');res.json({settings:await getPublicAppointmentSettings(),notificationConfigured:Boolean(process.env.BREVO_API_KEY&&process.env.BREVO_SENDER_EMAIL),emailNotificationConfigured:Boolean(process.env.BREVO_API_KEY&&process.env.BREVO_SENDER_EMAIL)});}catch(e){next(e);}});
+app.get('/api/admin/public-booking-settings',requireAuth,async(_req,res,next)=>{try{res.set('Cache-Control','no-store');res.json({settings:await getPublicAppointmentSettings(),notificationConfigured:Boolean(process.env.BREVO_API_KEY&&process.env.BREVO_SENDER_EMAIL),emailNotificationConfigured:Boolean(process.env.BREVO_API_KEY&&process.env.BREVO_SENDER_EMAIL)});}catch(e){next(e);}});
 app.put('/api/admin/public-booking-settings',requireAuth,requireAdmin,async(req,res,next)=>{try{const b=req.body||{},days=Array.isArray(b.days)?[...new Set(b.days.map(Number))]:[],startHour=Number(b.startHour),endHour=Number(b.endHour),whatsapp=typeof b.whatsapp==='string'?b.whatsapp.trim():'',notificationWhatsapp=typeof b.notificationWhatsapp==='string'?b.notificationWhatsapp.trim():'',notificationEmail=typeof b.notificationEmail==='string'?b.notificationEmail.trim():'',phone=typeof b.phone==='string'?b.phone.trim():'';if(!days.length||days.some(d=>!Number.isInteger(d)||d<0||d>6)||!Number.isInteger(startHour)||startHour<0||startHour>23||!Number.isInteger(endHour)||endHour<1||endHour>24||endHour<=startHour||(whatsapp&&!/^[+()\d .-]{7,25}$/.test(whatsapp))||(notificationWhatsapp&&!/^[+()\d .-]{7,25}$/.test(notificationWhatsapp))||(phone&&!/^[+()\d .-]{7,25}$/.test(phone))||(notificationEmail&&(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notificationEmail)||notificationEmail.length>254)))return res.status(400).json({error:'Revisa días, horario, teléfonos y correo electrónico.'});const settings={days,startHour,endHour,whatsapp,notificationWhatsapp,notificationEmail,phone};await pool.query("INSERT INTO app_records(store, record_key, data) VALUES('config',$1,$2) ON CONFLICT(store,record_key) DO UPDATE SET data=EXCLUDED.data, updated_at=NOW()",['public_appointments_settings',{key:'public_appointments_settings',value:settings}]);res.json({ok:true,settings,notificationConfigured:Boolean(process.env.WHATSAPP_ACCESS_TOKEN&&process.env.WHATSAPP_PHONE_NUMBER_ID&&process.env.WHATSAPP_TEMPLATE_NAME),emailNotificationConfigured:Boolean(String(process.env.BREVO_API_KEY||'').trim()&&String(process.env.BREVO_SENDER_EMAIL||'').trim())});}catch(e){next(e);}});
 app.get('/api/public/appointment-doctors', async (_req, res, next) => {
   try {
@@ -1080,6 +1080,7 @@ app.post(
   (req, res, next) => {
     if (req.params.store === 'cobros') return requireFinanceWrite(req, res, next);
     if (req.params.store === 'empleados') return requireAdmin(req, res, next);
+    if (req.params.store === 'config' && (req.params.id === 'public_appointments_settings' || (req.method === 'POST' && req.body?.key === 'public_appointments_settings') || (req.method === 'DELETE' && !req.params.id))) return requireAdmin(req, res, next);
     return next();
   },
   async (req, res, next) => {
@@ -1175,6 +1176,7 @@ app.put(
   (req, res, next) => {
     if (req.params.store === 'cobros') return requireFinanceWrite(req, res, next);
     if (req.params.store === 'empleados') return requireAdmin(req, res, next);
+    if (req.params.store === 'config' && (req.params.id === 'public_appointments_settings' || (req.method === 'POST' && req.body?.key === 'public_appointments_settings') || (req.method === 'DELETE' && !req.params.id))) return requireAdmin(req, res, next);
     return next();
   },
   async (req, res, next) => {
@@ -1235,6 +1237,7 @@ app.delete(
   (req, res, next) => {
     if (req.params.store === 'cobros') return requireFinanceWrite(req, res, next);
     if (req.params.store === 'empleados') return requireAdmin(req, res, next);
+    if (req.params.store === 'config' && (req.params.id === 'public_appointments_settings' || (req.method === 'POST' && req.body?.key === 'public_appointments_settings') || (req.method === 'DELETE' && !req.params.id))) return requireAdmin(req, res, next);
     return next();
   },
   async (req, res, next) => {
@@ -1265,6 +1268,7 @@ app.delete(
   (req, res, next) => {
     if (req.params.store === 'cobros') return requireFinanceWrite(req, res, next);
     if (req.params.store === 'empleados') return requireAdmin(req, res, next);
+    if (req.params.store === 'config' && (req.params.id === 'public_appointments_settings' || (req.method === 'POST' && req.body?.key === 'public_appointments_settings') || (req.method === 'DELETE' && !req.params.id))) return requireAdmin(req, res, next);
     return next();
   },
   async (req, res, next) => {
