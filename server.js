@@ -866,7 +866,7 @@ app.get('/api/public/appointment-availability', async (req, res, next) => {
     }
     const appointments = await getPublicAgenda(pool);
     const occupied = appointments.filter(c => c && String(c.medicoId) === String(medicoId) &&
-      c.fecha === fecha && !['Cancelada', 'Eliminada'].includes(String(c.estado || '')))
+      c.fecha === fecha && !['cancelada', 'cancelado', 'eliminada', 'eliminado', 'canceled', 'cancelled', 'deleted'].includes(String(c.estado || '').trim().toLowerCase()))
       .map(c => String(c.hora || '').slice(0, 5));
     const horarios = publicAppointmentSlots(settings, fecha).filter(slot => {
       const start = Number(slot.slice(0, 2)) * 60 + Number(slot.slice(3, 5));
