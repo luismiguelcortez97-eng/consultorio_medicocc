@@ -5,7 +5,7 @@ const WEEKDAY_OPEN_MINUTES = 9 * 60;
 const WEEKDAY_CLOSE_MINUTES = 19 * 60;
 const SATURDAY_CLOSE_MINUTES = 15 * 60;
 
-function publicAppointmentSlots(settings = {}, fecha = '') {
+function publicAppointmentSlots(settings = {}, fecha = '', tipoPaciente = 'membresia') {
   const parsed = /^\d{4}-\d{2}-\d{2}$/.test(fecha)
     ? new Date(fecha + 'T00:00:00Z')
     : null;
@@ -14,6 +14,16 @@ function publicAppointmentSlots(settings = {}, fecha = '') {
   // El consultorio permanece cerrado los domingos.
   if (day === 0) return [];
   if (Array.isArray(settings.days) && !settings.days.map(Number).includes(day)) return [];
+
+  // Consulta particular: horas en punto. Se conserva el horario especial de membresías.
+  if (tipoPaciente === 'particular') {
+    const closing = day === 6 ? SATURDAY_CLOSE_MINUTES : WEEKDAY_CLOSE_MINUTES;
+    const slots = [];
+    for (let t = WEEKDAY_OPEN_MINUTES; t <= Math.min(18 * 60, closing - APPOINTMENT_MINUTES); t += APPOINTMENT_MINUTES) {
+      slots.push(String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0'));
+    }
+    return slots;
+  }
 
   const configuredStart = Number.isInteger(Number(settings.startHour))
     ? Number(settings.startHour) * 60 + 30
