@@ -775,6 +775,58 @@ async function getPublicAgenda(client) {
   const result = await client.query("SELECT data FROM app_records WHERE store='agenda'");
   return result.rows.map(row => row.data);
 }
+
+app.post('/api/public/appointments/verify', publicAppointmentLimiter, async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const codigo = typeof body.codigo === 'string' ? body.codigo.trim() : '';
+    const telefono = typeof body.telefono === 'string' ? body.telefono.replace(/\D/g, '') : '';
+    if (!/^\d{6}$/.test(codigo) && telefono.length < 7) return res.status(400).json({ error: 'Escribe el código de 6 dígitos o el número de celular registrado.' });
+    const result = await pool.query("SELECT data FROM app_records WHERE store='agenda' AND data->>'creadoPor'='portal-publico'");
+    let matches = result.rows.map(row => row.data).filter(c => c && !['Eliminada','Eliminado'].includes(String(c.estado || '')));
+    if (/^\d{6}$/.test(codigo)) {
+      const hash = crypto.createHash('sha256').update(codigo).digest('hex');
+      matches = matches.filter(c => typeof c.codigoVerificacionHash === 'string' && c.codigoVerificacionHash === hash);
+    } else {
+      matches = matches.filter(c => String(c.telefonoContacto || '').replace(/\D/g, '') === telefono);
+    }
+    if (!matches.length) return res.status(404).json({ error: 'No encontramos una cita con esos datos. Revisa el código o el número e inténtalo de nuevo.' });
+    matches.sort((a,b) => String(a.fecha||'').localeCompare(String(b.fecha||'')) || String(a.hora||'').localeCompare(String(b.hora||'')));
+    const citas = matches.map(c => ({ fecha:String(c.fecha||''), hora:String(c.hora||''), estado:String(c.estado||'')==='Confirmada'?'Confirmada':['Cancelada','Cancelado'].includes(String(c.estado||''))?'Cancelada':'Pendiente de confirmación' }));
+    res.set('Cache-Control','no-store');
+    res.json({ ok:true, citas });
+  } catch (error) { next(error); }
+});
+app.get('/api/admin/public-appointments', requireAuth, requireAdmin, async (_req, res, next) => {
+  try {
+    const result = await pool.query("SELECT data FROM app_records WHERE store='agenda' AND data->>'creadoPor'='portal-publico' AND COALESCE(data->>'estado','') NOT IN ('Eliminada','Eliminado') ORDER BY data->>'fecha', data->>'hora'");
+    res.set('Cache-Control','no-store'); res.json(result.rows.map(row=>row.data));
+  } catch (error) { next(error); }
+});
+app.put('/api/admin/public-appointments/:id/confirm', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const id=Number(req.params.id);
+    if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'Solicitud inválida.'});
+    const result=await pool.query("SELECT data FROM app_records WHERE store='agenda' AND record_key=$1",[String(id)]);
+    if(!result.rowCount||result.rows[0].data.creadoPor!=='portal-publico')return res.status(404).json({error:'No se encontró la solicitud web.'});
+    const appointment=result.rows[0].data;
+    if(['Eliminada','Eliminado','Cancelada','Cancelado'].includes(String(appointment.estado||'')))return res.status(409).json({error:'Esta solicitud ya fue cancelada o eliminada.'});
+    appointment.estado='Confirmada'; appointment.confirmadoPor=req.user; appointment.confirmadoEn=new Date().toISOString(); appointment.updatedAt=appointment.confirmadoEn;
+    const saved=await pool.query("UPDATE app_records SET data=$2, updated_at=NOW() WHERE store='agenda' AND record_key=$1 RETURNING data",[String(id),appointment]);
+    res.json({ok:true,cita:saved.rows[0].data});
+  } catch(error){next(error);}
+});
+app.delete('/api/admin/public-appointments/:id', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const id=Number(req.params.id);
+    if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'Solicitud inválida.'});
+    const result=await pool.query("SELECT data FROM app_records WHERE store='agenda' AND record_key=$1",[String(id)]);
+    if(!result.rowCount||result.rows[0].data.creadoPor!=='portal-publico')return res.status(404).json({error:'No se encontró la solicitud web.'});
+    await pool.query("DELETE FROM app_records WHERE store='agenda' AND record_key=$1",[String(id)]);
+    res.json({ok:true});
+  } catch(error){next(error);}
+});
+
 app.get('/api/public/booking-settings',async(_req,res,next)=>{try{res.set('Cache-Control','no-store');res.json({settings:await getPublicAppointmentSettings()});}catch(e){next(e);}});
 app.put('/api/admin/public-booking-settings',requireAuth,requireAdmin,async(req,res,next)=>{try{const b=req.body||{},days=Array.isArray(b.days)?[...new Set(b.days.map(Number))]:[],startHour=Number(b.startHour),endHour=Number(b.endHour),whatsapp=typeof b.whatsapp==='string'?b.whatsapp.trim():'',phone=typeof b.phone==='string'?b.phone.trim():'';if(!days.length||days.some(d=>!Number.isInteger(d)||d<0||d>6)||!Number.isInteger(startHour)||startHour<0||startHour>23||!Number.isInteger(endHour)||endHour<1||endHour>24||endHour<=startHour||(whatsapp&&!/^[+()\d .-]{7,25}$/.test(whatsapp))||(phone&&!/^[+()\d .-]{7,25}$/.test(phone)))return res.status(400).json({error:'Revisa días, horario y teléfonos.'});const settings={days,startHour,endHour,whatsapp,phone};await pool.query("INSERT INTO app_records(store, record_key, data) VALUES('config',$1,$2) ON CONFLICT(store,record_key) DO UPDATE SET data=EXCLUDED.data, updated_at=NOW()",['public_appointments_settings',{key:'public_appointments_settings',value:settings}]);res.json({ok:true,settings});}catch(e){next(e);}});
 app.get('/api/public/appointment-doctors', async (_req, res, next) => {
@@ -834,7 +886,7 @@ app.post('/api/public/appointments', publicAppointmentLimiter, async (req, res, 
   if (nombre.length < 2 || nombre.length > 120 || !/^[+()\d .-]{7,25}$/.test(telefono) ||
       !publicBirthDateIsValid(fechaNacimiento) ||
       !Number.isSafeInteger(medicoId) || medicoId < 1 || !publicDateIsValid(fecha) ||
-      !publicAppointmentSlots(await getPublicAppointmentSettings()).includes(hora) || !PUBLIC_APPOINTMENT_TYPES.has(tipo) ||
+      !(await getPublicAppointmentSettings()).days.includes(new Date(fecha + 'T00:00:00Z').getUTCDay()) || !publicAppointmentSlots(await getPublicAppointmentSettings()).includes(hora) || !PUBLIC_APPOINTMENT_TYPES.has(tipo) ||
       (['Otros síntomas', 'Otro motivo'].includes(tipo) && (!otroMotivo || otroMotivo.split(/\s+/).length > 50)) ||
       (!['Otros síntomas', 'Otro motivo'].includes(tipo) && otroMotivo)) {
     return res.status(400).json({ error: 'Revisa los datos. Si eliges “Otros síntomas”, describe el motivo en máximo 50 palabras.' });
