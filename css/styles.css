@@ -1053,3 +1053,5 @@ body.tema-suave .study-search-results,
 @media(max-width:560px){.booking-grid{grid-template-columns:1fr}.booking-slots{grid-template-columns:repeat(3,minmax(0,1fr))}}
 
 .booking-contact{display:flex;justify-content:center;flex-wrap:wrap;gap:10px;margin:0 0 20px}.booking-contact-link{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:10px 16px;border:1px solid #c8d8eb;border-radius:9px;background:#fff;color:#174f8c;font-weight:700;text-decoration:none}.booking-contact-whatsapp{background:#eaf8ef;border-color:#b8e2c6;color:#176b39}
+
+.booking-verify-card{margin-top:18px}.booking-verify-or{margin:12px 0;text-align:center;color:#64748b;font-weight:700}.booking-status-result{margin-top:10px;padding:12px;border:1px solid #d7e0ec;border-radius:10px;background:#f7f9fc}.booking-status-result p{margin:6px 0 0;color:#46566b}
