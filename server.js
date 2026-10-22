@@ -5,6 +5,7 @@ const rateLimit = require('express-rate-limit');
 const { Pool } = require('pg');
 const crypto = require('crypto');
 const path = require('path');
+const { initMembershipDb, registerMembershipRoutes } = require('./membership-server');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -103,6 +104,7 @@ async function initDb() {
   await pool.query(
     'CREATE INDEX IF NOT EXISTS app_records_store_idx ON app_records(store)'
   );
+  await initMembershipDb(pool);
 }
 
 function sign(value) {
@@ -1293,6 +1295,8 @@ app.delete(
   }
 );
 
+const runMembershipNotifications = registerMembershipRoutes(app, pool, { requireAuth, requireAdmin });
+
 app.use((req, res, next) => {
   if (
     /^\/(server\.js|package(?:-lock)?\.json|README\.md|render\.yaml|\.env(?:\.example)?|\.gitignore)(?:$|\?)/i.test(
@@ -1323,6 +1327,8 @@ app.use((error, _req, res, _next) => {
 
 initDb()
   .then(() => {
+    runMembershipNotifications().catch(error => console.error('Error inicial de notificaciones de membresías:', error.message));
+    setInterval(() => runMembershipNotifications().catch(error => console.error('Error de notificaciones de membresías:', error.message)), 6 * 60 * 60 * 1000);
     app.listen(PORT, '0.0.0.0', () => {
       console.log(
         `Consultorio Médico CC escuchando en puerto ${PORT}`
