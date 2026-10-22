@@ -1299,7 +1299,7 @@ const runMembershipNotifications = registerMembershipRoutes(app, pool, { require
 
 app.use((req, res, next) => {
   if (
-    /^\/(server\.js|package(?:-lock)?\.json|README\.md|render\.yaml|\.env(?:\.example)?|\.gitignore)(?:$|\?)/i.test(
+    /^\/(server\.js|membership-server\.js|package(?:-lock)?\.json|README\.md|render\.yaml|\.env(?:\.example)?|\.gitignore)(?:$|\?)/i.test(
       req.path
     )
   ) {
