@@ -948,7 +948,7 @@ app.post('/api/public/appointments', publicAppointmentLimiter, async (req, res, 
   if (nombre.length < 2 || nombre.length > 120 || !/^[+()\d .-]{7,25}$/.test(telefono) ||
       !publicBirthDateIsValid(fechaNacimiento) ||
       !Number.isSafeInteger(medicoId) || medicoId < 1 || !publicDateIsValid(fecha) ||
-      !(await getPublicAppointmentSettings()).days.includes(new Date(fecha + 'T00:00:00Z').getUTCDay()) || !publicAppointmentSlots(await getPublicAppointmentSettings(), fecha).includes(hora) || !['membresia','particular'].includes(tipoPaciente) || (tipoPaciente === 'membresia' && !/^CC-M-\\d{6,}$/.test(folioMembresia)) || (tipoPaciente === 'particular' && folioMembresia) || !PUBLIC_APPOINTMENT_TYPES.has(tipo) ||
+      !(await getPublicAppointmentSettings()).days.includes(new Date(fecha + 'T00:00:00Z').getUTCDay()) || !publicAppointmentSlots(await getPublicAppointmentSettings(), fecha).includes(hora) || !['membresia','particular'].includes(tipoPaciente) || (tipoPaciente === 'membresia' && !/^CC-M-\d{6,}$/.test(folioMembresia)) || (tipoPaciente === 'particular' && folioMembresia) || !PUBLIC_APPOINTMENT_TYPES.has(tipo) ||
       (['Otros síntomas', 'Otro motivo'].includes(tipo) && (!otroMotivo || otroMotivo.split(/\s+/).length > 50)) ||
       (!['Otros síntomas', 'Otro motivo'].includes(tipo) && otroMotivo)) {
     return res.status(400).json({ error: 'Revisa los datos. Si eliges “Otros síntomas”, describe el motivo en máximo 50 palabras.' });
@@ -961,7 +961,7 @@ app.post('/api/public/appointments', publicAppointmentLimiter, async (req, res, 
     if (tipoPaciente === 'membresia') {
       const memberResult = await client.query("SELECT m.full_name AS \"fullName\", m.birth_date AS \"birthDate\", a.start_at AS \"startsAt\", a.expires_at AS \"expiresAt\", a.canceled_at AS \"canceledAt\", a.status AS \"accountStatus\" FROM membership_members m JOIN membership_accounts a ON a.id=m.account_id WHERE m.folio=$1", [folioMembresia]);
       member = memberResult.rows[0] || null;
-      const normalizeName = value => String(value || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+      const normalizeName = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
       const active = member && !member.canceledAt && member.startsAt && member.expiresAt && new Date(member.startsAt).getTime() <= Date.now() && new Date(member.expiresAt).getTime() > Date.now();
       if (!active) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'El folio no corresponde a una membresía activa. Revisa el folio o selecciona cita particular.' }); }
       if (normalizeName(member.fullName) !== normalizeName(nombre) || String(member.birthDate).slice(0,10) !== fechaNacimiento) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'El folio no coincide con el nombre y la fecha de nacimiento del integrante. Verifica los datos.' }); }
