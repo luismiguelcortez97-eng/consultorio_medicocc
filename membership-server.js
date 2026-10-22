@@ -107,6 +107,7 @@ async function verifyPayment(pool,providerId){
 function registerMembershipRoutes(app,pool,auth){
   const requireAuth=auth.requireAuth,requireAdmin=auth.requireAdmin;
   const publicLimiter=rateLimit({windowMs:15*60*1000,limit:8,standardHeaders:true,legacyHeaders:false,message:{error:'Demasiados registros. Intenta más tarde.'}});
+  const statusLimiter=rateLimit({windowMs:15*60*1000,limit:20,standardHeaders:true,legacyHeaders:false,message:{error:'Demasiadas consultas de folio. Intenta más tarde.'}});
   app.get('/api/public/memberships/config',async(_req,res,next)=>{try{res.set('Cache-Control','no-store');res.json(publicConfig(await settings(pool)));}catch(e){next(e);}});
   app.post('/api/public/memberships/register',publicLimiter,async(req,res,next)=>{
     if(req.body?.termsAccepted!==true)return res.status(400).json({error:'Debes aceptar las condiciones de la membresía.'});
@@ -116,7 +117,7 @@ function registerMembershipRoutes(app,pool,auth){
     let checkoutUrl=null;try{checkoutUrl=await createPreference(pool,created.paymentId,req.body.plan,Number(req.body.intervalMonths),created.amount,created.clientEmail);}catch(e){console.error('No se pudo preparar el pago de membresía:',e.message);}
     res.status(201).json({ok:true,folios:created.folios.map(m=>({folio:m.folio,nombre:m.fullName})),checkoutUrl,paymentConfigured:Boolean(String(process.env.MP_ACCESS_TOKEN||'').trim()),message:checkoutUrl?'Registro guardado. Guarda tus folios y continúa al pago seguro.':'Registro guardado como pendiente de pago. El pago en línea aún no está disponible; contacta al consultorio. No se activarán beneficios hasta confirmar el pago.'});
   });
-  app.get('/api/public/memberships/status',async(req,res,next)=>{try{const folio=String(req.query.folio||'').trim().toUpperCase();if(!/^CC-M-\d{6,}$/.test(folio))return res.status(400).json({error:'Escribe un folio válido.'});const r=await pool.query('SELECT a.status,a.start_at,a.expires_at,a.canceled_at FROM membership_members m JOIN membership_accounts a ON a.id=m.account_id WHERE m.folio=$1',[folio]);if(!r.rowCount)return res.status(404).json({error:'No se encontró el folio.'});res.set('Cache-Control','no-store');res.json({status:state(r.rows[0])});}catch(e){next(e);}});
+  app.get('/api/public/memberships/status',statusLimiter,async(req,res,next)=>{try{const folio=String(req.query.folio||'').trim().toUpperCase();if(!/^CC-M-\d{6,}$/.test(folio))return res.status(400).json({error:'Escribe un folio válido.'});const r=await pool.query('SELECT a.status,a.start_at,a.expires_at,a.canceled_at FROM membership_members m JOIN membership_accounts a ON a.id=m.account_id WHERE m.folio=$1',[folio]);if(!r.rowCount)return res.status(404).json({error:'No se encontró el folio.'});res.set('Cache-Control','no-store');res.json({status:state(r.rows[0])});}catch(e){next(e);}});
   app.post('/api/public/memberships/webhook',async(req,res,next)=>{try{const id=String(req.query['data.id']||req.query.id||req.body?.data?.id||req.body?.id||'');if(id)await verifyPayment(pool,id);res.status(200).json({ok:true});}catch(e){next(e);}});
   app.get('/api/memberships',requireAuth,async(req,res,next)=>{
     try{
