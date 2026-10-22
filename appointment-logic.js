@@ -51,7 +51,7 @@ function isMembershipActive(member, now = Date.now()) {
 function membershipMatchesPerson(member, name, birthDate) {
   if (!member) return false;
   const normalize = value => String(value || '').normalize('NFD')
-    .replace(/[\\u0300-\\u036f]/g, '').toLowerCase()
+    .replace(/[\u0300-\u036f]/g, '').toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ').trim();
   return normalize(member.fullName) === normalize(name) &&
     String(member.birthDate || '').slice(0, 10) === String(birthDate || '');
