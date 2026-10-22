@@ -29,7 +29,7 @@ test('respeta los días y las horas configuradas sin rebasar el cierre del consu
   assert.deepEqual(publicAppointmentSlots({ days: [1, 2, 3, 4, 5], startHour: 9, endHour: 18 }, '2026-10-23'), [
     '09:30','10:30','11:30','12:30','13:30','14:30','15:30','16:30','17:30'
   ]);
-  assert.deepEqual(publicAppointmentSlots({ days: [1, 2, 3, 4, 5], startHour: 9, endHour: 17 }, '2026-10-24'), [
+  assert.deepEqual(publicAppointmentSlots({ days: [1, 2, 3, 4, 5, 6], startHour: 9, endHour: 17 }, '2026-10-24'), [
     '09:30','10:30','11:30','12:30','13:30'
   ]);
   assert.deepEqual(publicAppointmentSlots({ days: [1, 2, 3, 4, 5], startHour: 9, endHour: 17 }, '2026-10-24').filter(x => x === '14:30'), []);
