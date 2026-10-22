@@ -957,7 +957,7 @@ app.post('/api/public/appointments', publicAppointmentLimiter, async (req, res, 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('SELECT pg_advisory_xact_lock($1, $2)', [medicoId, Number(fecha.replace(/-/g, ''))]);
+    await client.query('SELECT pg_advisory_xact_lock($1::integer, $2::integer)', [medicoId, Number(fecha.replace(/-/g, ''))]);
     let member = null;
     if (tipoPaciente === 'membresia') {
       const memberResult = await client.query("SELECT m.full_name AS \"fullName\", m.birth_date AS \"birthDate\", a.start_at AS \"startsAt\", a.expires_at AS \"expiresAt\", a.canceled_at AS \"canceledAt\", a.status AS \"accountStatus\" FROM membership_members m JOIN membership_accounts a ON a.id=m.account_id WHERE m.folio=$1", [folioMembresia]);
