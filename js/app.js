@@ -2902,16 +2902,20 @@ async function renderAgenda() {
     (APP.agendaSelectedDate === localDateString(new Date()) ? '<div class="alert alert-info"><strong>Notificación de hoy:</strong> ' + (citasDia.filter(function(c){return c.estado !== 'Cancelada';}).length ? citasDia.filter(function(c){return c.estado !== 'Cancelada';}).sort(function(a,b){return String(a.hora||'').localeCompare(String(b.hora||''));}).map(function(c){return featureEscape(c.hora || 'Sin hora') + ' — ' + featureEscape(c.paciente || patientName(c.pacienteId)) + ' (' + featureEscape(doctorName(c.medicoId)) + ')';}).join('<br>') : 'No hay citas programadas para hoy.') + '</div>' : '') +
     (citasDia.length ? '<div class="table-responsive"><table><thead><tr><th>Hora</th><th>Paciente</th><th>Médico</th><th>Motivo</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>' +
       citasDia.map(function (c) {
-        return '<tr><td>' + featureEscape(c.hora || '—') + '</td><td><strong>' + featureEscape(c.paciente || patientName(c.pacienteId)) + '</strong></td>' +
+        return '<tr><td>' + featureEscape(c.hora || '—') + '</td><td><strong>' + featureEscape(c.paciente || patientName(c.pacienteId)) + '</strong>' +
+          (c.creadoPor === 'portal-publico' ? '<div class="text-muted" style="font-size:.8rem">' +
+            (c.edad != null ? 'Edad: ' + featureEscape(c.edad) + ' años' : '') +
+            (c.fechaNacimiento ? ' · Nacimiento: ' + featureEscape(c.fechaNacimiento) : '') +
+            (c.telefonoContacto ? '<br>Tel. ' + featureEscape(c.telefonoContacto) : '') + '</div>' : '') + '</td>' +
           '<td>' + featureEscape(doctorName(c.medicoId)) + '</td><td>' + featureEscape(c.motivo || '—') + '</td>' +
           '<td>' + featureEscape(c.estado || 'Programada') + '</td><td>' +
-          (c.estado === 'Cancelada' || c.estado === 'Eliminada' ? '<button class="btn btn-danger btn-sm" onclick="eliminarCitaAgenda(' + Number(c.id) + ')">Eliminar</button>' : '<button class="btn btn-success btn-sm" onclick="confirmarCitaAgenda(' + Number(c.id) + ')">' + (c.estado === 'Confirmada' ? 'Confirmada ✓' : 'Confirmar') + '</button> ' + (c.creadoPor === 'portal-publico' ? '' : '<button class="btn btn-outline btn-sm" onclick="openAgendaModal(' + Number(c.id) + ')">Editar</button> ') + '<button class="btn btn-danger btn-sm" onclick="cancelarCitaAgenda(' + Number(c.id) + ')">No se llevará a cabo</button>') + '</td></tr>';
+          (c.estado !== 'Cancelada' && c.estado !== 'Eliminada' ? '<button class="btn btn-success btn-sm" onclick="confirmarCitaAgenda(' + Number(c.id) + ')">' + (c.estado === 'Confirmada' ? 'Asistencia confirmada ✓' : 'Confirmar asistencia') + '</button> ' + (c.creadoPor === 'portal-publico' ? '' : '<button class="btn btn-outline btn-sm" onclick="openAgendaModal(' + Number(c.id) + ')">Editar</button> ') + '<button class="btn btn-warning btn-sm" onclick="cancelarCitaAgenda(' + Number(c.id) + ')">Cancelar cita</button> ' : '') + '<button class="btn btn-danger btn-sm" onclick="eliminarCitaAgenda(' + Number(c.id) + ')">Eliminar cita</button></td></tr>';
       }).join('') + '</tbody></table></div>' : '<div class="empty-state"><p>No hay citas para este día.</p></div>') +
     '</div></div>';
 }
 
 async function confirmarCitaAgenda(id) { const cita = await DB.get('agenda', id); if (!cita) return alert('No se encontró la cita.'); cita.estado = 'Confirmada'; cita.actualizadoPor = APP.currentUser; cita.updatedAt = new Date().toISOString(); await DB.put('agenda', cita); await renderAgenda(); }
-async function eliminarCitaAgenda(id) { if (!confirm('¿Eliminar esta cita cancelada? Esta acción no se puede deshacer.')) return; try { await DB.remove('agenda', id); await renderAgenda(); } catch (error) { alert('No se pudo eliminar la cita: ' + error.message); } }
+async function eliminarCitaAgenda(id) { if (!confirm('¿Eliminar esta solicitud/cita de la agenda? Solo se eliminará la cita; no se borrará el expediente médico de ningún paciente. Esta acción no se puede deshacer.')) return; try { await DB.remove('agenda', id); await renderAgenda(); } catch (error) { alert('No se pudo eliminar la cita: ' + error.message); } }
 function agendaMoverMes(delta) {
   APP.agendaMonth = new Date(APP.agendaMonth.getFullYear(), APP.agendaMonth.getMonth() + delta, 1);
   renderAgenda();
