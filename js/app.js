@@ -2861,9 +2861,10 @@ async function renderAgenda() {
   const citas = await DB.getAll('agenda');
   const pacientes = await DB.getAll(DB.STORES.pacientes);
   const medicos = await DB.getAll(DB.STORES.medicos);
+  const citaPacientePorId = function (id) { return citas.find(function (c) { return c.pacienteId == null && String(c.id) === String(id); })?.paciente || ''; };
   const patientName = function (id) {
     const p = pacientes.find(function (x) { return String(x.id) === String(id); });
-    return p ? p.nombre : 'Paciente no disponible';
+    return p ? p.nombre : (citaPacientePorId(id) || 'Paciente no disponible');
   };
   const doctorName = function (id) {
     const m = medicos.find(function (x) { return String(x.id) === String(id); });
