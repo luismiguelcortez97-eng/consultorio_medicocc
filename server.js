@@ -855,7 +855,8 @@ app.get('/api/public/appointment-availability', async (req, res, next) => {
       return res.status(400).json({ error: 'Selecciona una fecha válida dentro de los próximos 90 días.' });
     }
     const settings = await getPublicAppointmentSettings();
-    if (!settings.days.includes(new Date(fecha + 'T00:00:00Z').getUTCDay())) {
+    const day = new Date(fecha + 'T00:00:00Z').getUTCDay();
+    if (day === 0 || !settings.days.includes(day)) {
       res.set('Cache-Control', 'no-store');
       return res.json({ fecha, medicoId, horarios: [] });
     }
@@ -946,10 +947,13 @@ app.post('/api/public/appointments', publicAppointmentLimiter, async (req, res, 
   const tipoPaciente = String(body.tipoPaciente || 'particular');
   const folioMembresia = typeof body.folioMembresia === 'string' ? body.folioMembresia.trim().toUpperCase() : '';
   const otroMotivo = typeof body.otroMotivo === 'string' ? body.otroMotivo.trim().replace(/\s+/g, ' ') : '';
+  const appointmentSettings = await getPublicAppointmentSettings();
   if (nombre.length < 2 || nombre.length > 120 || !/^[+()\d .-]{7,25}$/.test(telefono) ||
       !publicBirthDateIsValid(fechaNacimiento) ||
       !Number.isSafeInteger(medicoId) || medicoId < 1 || !publicDateIsValid(fecha) ||
-      !(await getPublicAppointmentSettings()).days.includes(new Date(fecha + 'T00:00:00Z').getUTCDay()) || !publicAppointmentSlots(await getPublicAppointmentSettings(), fecha).includes(hora) || !['membresia','particular'].includes(tipoPaciente) || (tipoPaciente === 'membresia' && !/^CC-M-\d{6,}$/.test(folioMembresia)) || (tipoPaciente === 'particular' && folioMembresia) || !PUBLIC_APPOINTMENT_TYPES.has(tipo) ||
+      !appointmentSettings.days.includes(new Date(fecha + 'T00:00:00Z').getUTCDay()) ||
+      !publicAppointmentSlots(appointmentSettings, fecha).includes(hora) ||
+      !['membresia','particular'].includes(tipoPaciente) || (tipoPaciente === 'membresia' && !/^CC-M-\d{6,}$/.test(folioMembresia)) || (tipoPaciente === 'particular' && folioMembresia) || !PUBLIC_APPOINTMENT_TYPES.has(tipo) ||
       (['Otros síntomas', 'Otro motivo'].includes(tipo) && (!otroMotivo || otroMotivo.split(/\s+/).length > 50)) ||
       (!['Otros síntomas', 'Otro motivo'].includes(tipo) && otroMotivo)) {
     return res.status(400).json({ error: 'Revisa los datos. Si eliges “Otros síntomas”, describe el motivo en máximo 50 palabras.' });
