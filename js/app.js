@@ -2905,7 +2905,7 @@ async function renderAgenda() {
         return '<tr><td>' + featureEscape(c.hora || '—') + '</td><td><strong>' + featureEscape(c.paciente || patientName(c.pacienteId)) + '</strong></td>' +
           '<td>' + featureEscape(doctorName(c.medicoId)) + '</td><td>' + featureEscape(c.motivo || '—') + '</td>' +
           '<td>' + featureEscape(c.estado || 'Programada') + '</td><td>' +
-          (c.estado === 'Cancelada' || c.estado === 'Eliminada' ? '<button class="btn btn-danger btn-sm" onclick="eliminarCitaAgenda(' + Number(c.id) + ')">Eliminar</button>' : '<button class="btn btn-success btn-sm" onclick="confirmarCitaAgenda(' + Number(c.id) + ')">' + (c.estado === 'Confirmada' ? 'Confirmada ✓' : 'Confirmar') + '</button> <button class="btn btn-outline btn-sm" onclick="openAgendaModal(' + Number(c.id) + ')">Editar</button> <button class="btn btn-danger btn-sm" onclick="cancelarCitaAgenda(' + Number(c.id) + ')">No se llevará a cabo</button>') + '</td></tr>';
+          (c.estado === 'Cancelada' || c.estado === 'Eliminada' ? '<button class="btn btn-danger btn-sm" onclick="eliminarCitaAgenda(' + Number(c.id) + ')">Eliminar</button>' : '<button class="btn btn-success btn-sm" onclick="confirmarCitaAgenda(' + Number(c.id) + ')">' + (c.estado === 'Confirmada' ? 'Confirmada ✓' : 'Confirmar') + '</button> ' + (c.creadoPor === 'portal-publico' ? '' : '<button class="btn btn-outline btn-sm" onclick="openAgendaModal(' + Number(c.id) + ')">Editar</button> ') + '<button class="btn btn-danger btn-sm" onclick="cancelarCitaAgenda(' + Number(c.id) + ')">No se llevará a cabo</button>') + '</td></tr>';
       }).join('') + '</tbody></table></div>' : '<div class="empty-state"><p>No hay citas para este día.</p></div>') +
     '</div></div>';
 }
