@@ -11,12 +11,18 @@ const {
   membershipMatchesPerson
 } = require('../appointment-logic');
 
-test('genera horarios laborales que terminan antes del cierre', () => {
+test('conserva horarios especiales de membresías y ofrece horas en punto a particulares', () => {
   assert.deepEqual(publicAppointmentSlots({}, '2026-10-23'), [
     '09:30','10:30','11:30','12:30','13:30','14:30','15:30','16:30','17:30'
   ]);
   assert.deepEqual(publicAppointmentSlots({}, '2026-10-24'), [
     '09:30','10:30','11:30','12:30','13:30'
+  ]);
+  assert.deepEqual(publicAppointmentSlots({}, '2026-10-23', 'particular'), [
+    '09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00'
+  ]);
+  assert.deepEqual(publicAppointmentSlots({}, '2026-10-24', 'particular'), [
+    '09:00','10:00','11:00','12:00','13:00','14:00'
   ]);
   assert.deepEqual(publicAppointmentSlots({}, '2026-10-25'), []);
   assert.deepEqual(publicAppointmentSlots({}, 'fecha-invalida'), []);
