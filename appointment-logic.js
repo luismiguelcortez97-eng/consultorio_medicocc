@@ -50,7 +50,7 @@ function appointmentConflicts(appointments, medicoId, fecha, hora, duration = AP
 }
 
 function minutesOf(value) {
-  const match = /^(\\d{2}):(\\d{2})$/.exec(String(value || ''));
+  const match = /^(\d{2}):(\d{2})$/.exec(String(value || ''));
   if (!match) return -1;
   const hour = Number(match[1]);
   const minute = Number(match[2]);
@@ -68,7 +68,7 @@ function isMembershipActive(member, now = Date.now()) {
 function membershipMatchesPerson(member, name, birthDate) {
   if (!member) return false;
   const normalize = value => String(value || '').normalize('NFD')
-    .replace(/[\\u0300-\\u036f]/g, '').toLowerCase()
+    .replace(/[\u0300-\u036f]/g, '').toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ').trim();
   return normalize(member.fullName) === normalize(name) &&
     String(member.birthDate || '').slice(0, 10) === String(birthDate || '');
