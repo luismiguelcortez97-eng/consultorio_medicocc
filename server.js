@@ -742,8 +742,23 @@ const publicAppointmentLimiter = rateLimit({
   message: { error: 'Demasiadas solicitudes. Intenta nuevamente en unos minutos.' }
 });
 const PUBLIC_APPOINTMENT_TYPES = new Set([
-  'Cita médica', 'Certificado médico', 'Otros síntomas', 'Presión alta', 'Lectura de estudios'
+  'Cita médica', 'Certificado médico', 'Otros síntomas', 'Presión alta', 'Lectura de estudios', 'Otro motivo'
 ]);
+function publicBirthDateIsValid(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(value + 'T00:00:00Z');
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) return false;
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  return parsed.getTime() <= today.getTime() && parsed.getUTCFullYear() >= today.getUTCFullYear() - 120;
+}
+function publicAgeFromBirthDate(value) {
+  const born = new Date(value + 'T00:00:00Z');
+  const today = new Date();
+  let age = today.getUTCFullYear() - born.getUTCFullYear();
+  if (today.getUTCMonth() < born.getUTCMonth() || (today.getUTCMonth() === born.getUTCMonth() && today.getUTCDate() < born.getUTCDate())) age--;
+  return age;
+}
 function publicDateIsValid(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const parsed = new Date(value + 'T00:00:00Z');
@@ -803,16 +818,18 @@ app.post('/api/public/appointments', publicAppointmentLimiter, async (req, res, 
   const body = req.body || {};
   const nombre = typeof body.nombre === 'string' ? body.nombre.trim().replace(/\s+/g, ' ') : '';
   const telefono = typeof body.telefono === 'string' ? body.telefono.trim() : '';
+  const fechaNacimiento = String(body.fechaNacimiento || '');
   const medicoId = Number(body.medicoId);
   const fecha = String(body.fecha || '');
   const hora = String(body.hora || '');
   const tipo = String(body.tipo || '');
   const otroMotivo = typeof body.otroMotivo === 'string' ? body.otroMotivo.trim().replace(/\s+/g, ' ') : '';
   if (nombre.length < 2 || nombre.length > 120 || !/^[+()\d .-]{7,25}$/.test(telefono) ||
+      !publicBirthDateIsValid(fechaNacimiento) ||
       !Number.isSafeInteger(medicoId) || medicoId < 1 || !publicDateIsValid(fecha) ||
       !publicAppointmentSlots().includes(hora) || !PUBLIC_APPOINTMENT_TYPES.has(tipo) ||
-      (tipo === 'Otros síntomas' && (!otroMotivo || otroMotivo.split(/\s+/).length > 50)) ||
-      (tipo !== 'Otros síntomas' && otroMotivo)) {
+      (['Otros síntomas', 'Otro motivo'].includes(tipo) && (!otroMotivo || otroMotivo.split(/\s+/).length > 50)) ||
+      (!['Otros síntomas', 'Otro motivo'].includes(tipo) && otroMotivo)) {
     return res.status(400).json({ error: 'Revisa los datos. Si eliges “Otros síntomas”, describe el motivo en máximo 50 palabras.' });
   }
   const client = await pool.connect();
@@ -846,7 +863,8 @@ app.post('/api/public/appointments', publicAppointmentLimiter, async (req, res, 
     const now = new Date().toISOString();
     const record = {
       id, pacienteId: null, paciente: nombre, telefonoContacto: telefono,
-      fecha, hora, medicoId, motivo: tipo === 'Otros síntomas' ? otroMotivo : tipo,
+      fechaNacimiento, edad: publicAgeFromBirthDate(fechaNacimiento),
+      fecha, hora, medicoId, motivo: ['Otros síntomas', 'Otro motivo'].includes(tipo) ? otroMotivo : tipo,
       tipoCita: tipo, estado: 'Solicitud web',
       codigoVerificacionHash: crypto.createHash('sha256').update(codigo).digest('hex'),
       creadoPor: 'portal-publico', createdAt: now, updatedAt: now
