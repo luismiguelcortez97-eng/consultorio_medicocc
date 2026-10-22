@@ -851,6 +851,8 @@ app.get('/api/public/appointment-availability', async (req, res, next) => {
   try {
     const fecha = String(req.query.fecha || '');
     const medicoId = Number(req.query.medicoId);
+    const tipoPaciente = String(req.query.tipoPaciente || 'particular');
+    if (!['membresia', 'particular'].includes(tipoPaciente)) return res.status(400).json({ error: 'Tipo de paciente inválido.' });
     if (!publicDateIsValid(fecha) || !Number.isSafeInteger(medicoId) || medicoId < 1) {
       return res.status(400).json({ error: 'Selecciona una fecha válida dentro de los próximos 90 días.' });
     }
@@ -868,7 +870,7 @@ app.get('/api/public/appointment-availability', async (req, res, next) => {
     const occupied = appointments.filter(c => c && String(c.medicoId) === String(medicoId) &&
       c.fecha === fecha && !['cancelada', 'cancelado', 'eliminada', 'eliminado', 'canceled', 'cancelled', 'deleted'].includes(String(c.estado || '').trim().toLowerCase()))
       .map(c => String(c.hora || '').slice(0, 5));
-    const horarios = publicAppointmentSlots(settings, fecha).filter(slot => {
+    const horarios = publicAppointmentSlots(settings, fecha, tipoPaciente).filter(slot => {
       const start = Number(slot.slice(0, 2)) * 60 + Number(slot.slice(3, 5));
       return !occupied.some(time => {
         if (!/^\d{2}:\d{2}$/.test(time)) return false;
@@ -952,7 +954,7 @@ app.post('/api/public/appointments', publicAppointmentLimiter, async (req, res, 
       !publicBirthDateIsValid(fechaNacimiento) ||
       !Number.isSafeInteger(medicoId) || medicoId < 1 || !publicDateIsValid(fecha) ||
       !appointmentSettings.days.includes(new Date(fecha + 'T00:00:00Z').getUTCDay()) ||
-      !publicAppointmentSlots(appointmentSettings, fecha).includes(hora) ||
+      !publicAppointmentSlots(appointmentSettings, fecha, tipoPaciente).includes(hora) ||
       !['membresia','particular'].includes(tipoPaciente) || (tipoPaciente === 'membresia' && !/^CC-M-\d{6,}$/.test(folioMembresia)) || (tipoPaciente === 'particular' && folioMembresia) || !PUBLIC_APPOINTMENT_TYPES.has(tipo) ||
       (['Otros síntomas', 'Otro motivo'].includes(tipo) && (!otroMotivo || otroMotivo.split(/\s+/).length > 50)) ||
       (!['Otros síntomas', 'Otro motivo'].includes(tipo) && otroMotivo)) {
