@@ -71,6 +71,13 @@ test('el folio debe coincidir con nombre y fecha de nacimiento', () => {
   assert.equal(membershipMatchesPerson(member, 'Otra Persona', '1990-05-12'), false);
 });
 
+test('la disponibilidad respeta horarios configurados y libera citas canceladas', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  assert.match(source, /publicAppointmentSlots\(settings, fecha\)/);
+  assert.match(source, /const appointmentSettings = await getPublicAppointmentSettings\(\)/);
+  assert.match(source, /'cancelada', 'cancelado', 'eliminada', 'eliminado', 'canceled', 'cancelled', 'deleted'/);
+});
+
 test('la ruta de citas toma un bloqueo transaccional antes de revisar e insertar', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
   const start = source.indexOf("app.post('/api/public/appointments'");
