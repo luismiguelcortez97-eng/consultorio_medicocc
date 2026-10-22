@@ -1,0 +1,28 @@
+name: Pruebas automatizadas
+
+on:
+  push:
+    branches:
+      - main
+      - feature/membresias-cc
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@v4
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Instalar dependencias
+        run: npm install
+      - name: Revisar sintaxis
+        run: npm run check
+      - name: Ejecutar pruebas
+        run: npm test
