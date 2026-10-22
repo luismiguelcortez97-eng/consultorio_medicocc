@@ -768,13 +768,15 @@ function publicDateIsValid(value) {
   const days = Math.floor((parsed.getTime() - today.getTime()) / 86400000);
   return days >= 0 && days <= 90;
 }
-function publicAppointmentSlots() {
-  return Array.from({ length: 8 }, (_, i) => String(i + 9).padStart(2, '0') + ':00');
-}
+const DEFAULT_PUBLIC_APPOINTMENT_SETTINGS={days:[1,2,3,4,5,6],startHour:9,endHour:17,whatsapp:'',phone:''};
+async function getPublicAppointmentSettings(db=pool){const r=await db.query("SELECT data FROM app_records WHERE store='config' AND record_key=$1",['public_appointments_settings']);const raw=r.rowCount?((r.rows[0].data||{}).value||{}):{};const days=Array.isArray(raw.days)?[...new Set(raw.days.map(Number).filter(d=>Number.isInteger(d)&&d>=0&&d<=6))]:DEFAULT_PUBLIC_APPOINTMENT_SETTINGS.days;const clean=v=>typeof v==='string'&&/^[+()\\d .-]{0,25}$/.test(v.trim())?v.trim():'';return{days,startHour:Number.isInteger(Number(raw.startHour))?Math.max(0,Math.min(23,Number(raw.startHour))):9,endHour:Number.isInteger(Number(raw.endHour))?Math.max(1,Math.min(24,Number(raw.endHour))):17,whatsapp:clean(raw.whatsapp),phone:clean(raw.phone)};}
+function publicAppointmentSlots(settings=DEFAULT_PUBLIC_APPOINTMENT_SETTINGS){if(settings.endHour<=settings.startHour)return[];return Array.from({length:settings.endHour-settings.startHour},(_,i)=>String(settings.startHour+i).padStart(2,'0')+':00');}
 async function getPublicAgenda(client) {
   const result = await client.query("SELECT data FROM app_records WHERE store='agenda'");
   return result.rows.map(row => row.data);
 }
+app.get('/api/public/booking-settings',async(_req,res,next)=>{try{res.set('Cache-Control','no-store');res.json({settings:await getPublicAppointmentSettings()});}catch(e){next(e);}});
+app.put('/api/admin/public-booking-settings',requireAuth,requireAdmin,async(req,res,next)=>{try{const b=req.body||{},days=Array.isArray(b.days)?[...new Set(b.days.map(Number))]:[],startHour=Number(b.startHour),endHour=Number(b.endHour),whatsapp=typeof b.whatsapp==='string'?b.whatsapp.trim():'',phone=typeof b.phone==='string'?b.phone.trim():'';if(!days.length||days.some(d=>!Number.isInteger(d)||d<0||d>6)||!Number.isInteger(startHour)||startHour<0||startHour>23||!Number.isInteger(endHour)||endHour<1||endHour>24||endHour<=startHour||(whatsapp&&!/^[+()\\d .-]{7,25}$/.test(whatsapp))||(phone&&!/^[+()\\d .-]{7,25}$/.test(phone)))return res.status(400).json({error:'Revisa días, horario y teléfonos.'});const settings={days,startHour,endHour,whatsapp,phone};await pool.query("INSERT INTO app_records(store, record_key, data) VALUES('config',$1,$2) ON CONFLICT(store,record_key) DO UPDATE SET data=EXCLUDED.data, updated_at=NOW()",['public_appointments_settings',{key:'public_appointments_settings',value:settings}]);res.json({ok:true,settings});}catch(e){next(e);}});
 app.get('/api/public/appointment-doctors', async (_req, res, next) => {
   try {
     const result = await pool.query("SELECT data FROM app_records WHERE store='medicos'");
@@ -792,7 +794,12 @@ app.get('/api/public/appointment-availability', async (req, res, next) => {
     const fecha = String(req.query.fecha || '');
     const medicoId = Number(req.query.medicoId);
     if (!publicDateIsValid(fecha) || !Number.isSafeInteger(medicoId) || medicoId < 1) {
-      return res.status(400).json({ error: 'Selecciona una fecha y un médico válidos dentro de los próximos 90 días.' });
+      return res.status(400).json({ error: 'Selecciona una fecha válida dentro de los próximos 90 días.' });
+    }
+    const settings = await getPublicAppointmentSettings();
+    if (!settings.days.includes(new Date(fecha + 'T00:00:00Z').getUTCDay())) {
+      res.set('Cache-Control', 'no-store');
+      return res.json({ fecha, medicoId, horarios: [] });
     }
     const doctorResult = await pool.query("SELECT data FROM app_records WHERE store='medicos' AND record_key=$1", [String(medicoId)]);
     if (!doctorResult.rowCount || doctorResult.rows[0].data.activo === false) {
@@ -802,7 +809,7 @@ app.get('/api/public/appointment-availability', async (req, res, next) => {
     const occupied = appointments.filter(c => c && String(c.medicoId) === String(medicoId) &&
       c.fecha === fecha && !['Cancelada', 'Eliminada'].includes(String(c.estado || '')))
       .map(c => String(c.hora || '').slice(0, 5));
-    const horarios = publicAppointmentSlots().filter(slot => {
+    const horarios = publicAppointmentSlots(settings).filter(slot => {
       const start = Number(slot.slice(0, 2)) * 60;
       return !occupied.some(time => {
         if (!/^\d{2}:\d{2}$/.test(time)) return false;
@@ -827,7 +834,7 @@ app.post('/api/public/appointments', publicAppointmentLimiter, async (req, res, 
   if (nombre.length < 2 || nombre.length > 120 || !/^[+()\d .-]{7,25}$/.test(telefono) ||
       !publicBirthDateIsValid(fechaNacimiento) ||
       !Number.isSafeInteger(medicoId) || medicoId < 1 || !publicDateIsValid(fecha) ||
-      !publicAppointmentSlots().includes(hora) || !PUBLIC_APPOINTMENT_TYPES.has(tipo) ||
+      !publicAppointmentSlots(await getPublicAppointmentSettings()).includes(hora) || !PUBLIC_APPOINTMENT_TYPES.has(tipo) ||
       (['Otros síntomas', 'Otro motivo'].includes(tipo) && (!otroMotivo || otroMotivo.split(/\s+/).length > 50)) ||
       (!['Otros síntomas', 'Otro motivo'].includes(tipo) && otroMotivo)) {
     return res.status(400).json({ error: 'Revisa los datos. Si eliges “Otros síntomas”, describe el motivo en máximo 50 palabras.' });
