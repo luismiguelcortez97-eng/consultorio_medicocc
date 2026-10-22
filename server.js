@@ -5,6 +5,8 @@ const rateLimit = require('express-rate-limit');
 const { Pool } = require('pg');
 const crypto = require('crypto');
 const path = require('path');
+const { initMembershipDb, registerMembershipRoutes } = require('./membership-server');
+const { publicAppointmentSlots, appointmentConflicts, isMembershipActive, membershipMatchesPerson } = require('./appointment-logic');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -103,6 +105,7 @@ async function initDb() {
   await pool.query(
     'CREATE INDEX IF NOT EXISTS app_records_store_idx ON app_records(store)'
   );
+  await initMembershipDb(pool);
 }
 
 function sign(value) {
@@ -772,7 +775,7 @@ function publicDateIsValid(value) {
 }
 const DEFAULT_PUBLIC_APPOINTMENT_SETTINGS={days:[1,2,3,4,5,6],startHour:9,endHour:17,whatsapp:'',notificationWhatsapp:'',notificationEmail:'',phone:''};
 async function getPublicAppointmentSettings(db=pool){const r=await db.query("SELECT data FROM app_records WHERE store='config' AND record_key=$1",['public_appointments_settings']);const raw=r.rowCount?((r.rows[0].data||{}).value||{}):{};const days=Array.isArray(raw.days)?[...new Set(raw.days.map(Number).filter(d=>Number.isInteger(d)&&d>=0&&d<=6))]:DEFAULT_PUBLIC_APPOINTMENT_SETTINGS.days;const clean=v=>typeof v==='string'&&/^[+()\d .-]{0,25}$/.test(v.trim())?v.trim():'';const notificationEmail=typeof raw.notificationEmail==='string'&&raw.notificationEmail.length<=254&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw.notificationEmail.trim())?raw.notificationEmail.trim():'';return{days,startHour:Number.isInteger(Number(raw.startHour))?Math.max(0,Math.min(23,Number(raw.startHour))):9,endHour:Number.isInteger(Number(raw.endHour))?Math.max(1,Math.min(24,Number(raw.endHour))):17,whatsapp:clean(raw.whatsapp),notificationWhatsapp:clean(raw.notificationWhatsapp),notificationEmail,phone:clean(raw.phone)};}
-function publicAppointmentSlots(settings=DEFAULT_PUBLIC_APPOINTMENT_SETTINGS){if(settings.endHour<=settings.startHour)return[];return Array.from({length:settings.endHour-settings.startHour},(_,i)=>String(settings.startHour+i).padStart(2,'0')+':00');}
+
 async function getPublicAgenda(client) {
   const result = await client.query("SELECT data FROM app_records WHERE store='agenda'");
   return result.rows.map(row => row.data);
@@ -848,11 +851,14 @@ app.get('/api/public/appointment-availability', async (req, res, next) => {
   try {
     const fecha = String(req.query.fecha || '');
     const medicoId = Number(req.query.medicoId);
+    const tipoPaciente = String(req.query.tipoPaciente || 'particular');
+    if (!['membresia', 'particular'].includes(tipoPaciente)) return res.status(400).json({ error: 'Tipo de paciente inválido.' });
     if (!publicDateIsValid(fecha) || !Number.isSafeInteger(medicoId) || medicoId < 1) {
       return res.status(400).json({ error: 'Selecciona una fecha válida dentro de los próximos 90 días.' });
     }
     const settings = await getPublicAppointmentSettings();
-    if (!settings.days.includes(new Date(fecha + 'T00:00:00Z').getUTCDay())) {
+    const day = new Date(fecha + 'T00:00:00Z').getUTCDay();
+    if (day === 0 || !settings.days.includes(day)) {
       res.set('Cache-Control', 'no-store');
       return res.json({ fecha, medicoId, horarios: [] });
     }
@@ -862,10 +868,10 @@ app.get('/api/public/appointment-availability', async (req, res, next) => {
     }
     const appointments = await getPublicAgenda(pool);
     const occupied = appointments.filter(c => c && String(c.medicoId) === String(medicoId) &&
-      c.fecha === fecha && !['Cancelada', 'Eliminada'].includes(String(c.estado || '')))
+      c.fecha === fecha && !['cancelada', 'cancelado', 'eliminada', 'eliminado', 'canceled', 'cancelled', 'deleted'].includes(String(c.estado || '').trim().toLowerCase()))
       .map(c => String(c.hora || '').slice(0, 5));
-    const horarios = publicAppointmentSlots(settings).filter(slot => {
-      const start = Number(slot.slice(0, 2)) * 60;
+    const horarios = publicAppointmentSlots(settings, fecha, tipoPaciente).filter(slot => {
+      const start = Number(slot.slice(0, 2)) * 60 + Number(slot.slice(3, 5));
       return !occupied.some(time => {
         if (!/^\d{2}:\d{2}$/.test(time)) return false;
         const begin = Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
@@ -940,11 +946,16 @@ app.post('/api/public/appointments', publicAppointmentLimiter, async (req, res, 
   const fecha = String(body.fecha || '');
   const hora = String(body.hora || '');
   const tipo = String(body.tipo || '');
+  const tipoPaciente = String(body.tipoPaciente || 'particular');
+  const folioMembresia = typeof body.folioMembresia === 'string' ? body.folioMembresia.trim().toUpperCase() : '';
   const otroMotivo = typeof body.otroMotivo === 'string' ? body.otroMotivo.trim().replace(/\s+/g, ' ') : '';
+  const appointmentSettings = await getPublicAppointmentSettings();
   if (nombre.length < 2 || nombre.length > 120 || !/^[+()\d .-]{7,25}$/.test(telefono) ||
       !publicBirthDateIsValid(fechaNacimiento) ||
       !Number.isSafeInteger(medicoId) || medicoId < 1 || !publicDateIsValid(fecha) ||
-      !(await getPublicAppointmentSettings()).days.includes(new Date(fecha + 'T00:00:00Z').getUTCDay()) || !publicAppointmentSlots(await getPublicAppointmentSettings()).includes(hora) || !PUBLIC_APPOINTMENT_TYPES.has(tipo) ||
+      !appointmentSettings.days.includes(new Date(fecha + 'T00:00:00Z').getUTCDay()) ||
+      !publicAppointmentSlots(appointmentSettings, fecha, tipoPaciente).includes(hora) ||
+      !['membresia','particular'].includes(tipoPaciente) || (tipoPaciente === 'membresia' && !/^CC-M-\d{6,}$/.test(folioMembresia)) || (tipoPaciente === 'particular' && folioMembresia) || !PUBLIC_APPOINTMENT_TYPES.has(tipo) ||
       (['Otros síntomas', 'Otro motivo'].includes(tipo) && (!otroMotivo || otroMotivo.split(/\s+/).length > 50)) ||
       (!['Otros síntomas', 'Otro motivo'].includes(tipo) && otroMotivo)) {
     return res.status(400).json({ error: 'Revisa los datos. Si eliges “Otros síntomas”, describe el motivo en máximo 50 palabras.' });
@@ -952,22 +963,21 @@ app.post('/api/public/appointments', publicAppointmentLimiter, async (req, res, 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('SELECT pg_advisory_xact_lock($1, $2)', [medicoId, Number(fecha.replace(/-/g, ''))]);
+    await client.query('SELECT pg_advisory_xact_lock($1::integer, $2::integer)', [medicoId, Number(fecha.replace(/-/g, ''))]);
+    let member = null;
+    if (tipoPaciente === 'membresia') {
+      const memberResult = await client.query("SELECT m.full_name AS \"fullName\", m.birth_date AS \"birthDate\", a.start_at AS \"startsAt\", a.expires_at AS \"expiresAt\", a.canceled_at AS \"canceledAt\", a.status AS \"accountStatus\" FROM membership_members m JOIN membership_accounts a ON a.id=m.account_id WHERE m.folio=$1", [folioMembresia]);
+      member = memberResult.rows[0] || null;
+      if (!isMembershipActive(member)) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'El folio no corresponde a una membresía activa. Revisa el folio o selecciona cita particular.' }); }
+      if (!membershipMatchesPerson(member, nombre, fechaNacimiento)) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'El folio no coincide con el nombre y la fecha de nacimiento del integrante. Verifica los datos.' }); }
+    }
     const doctorResult = await client.query("SELECT data FROM app_records WHERE store='medicos' AND record_key=$1", [String(medicoId)]);
     if (!doctorResult.rowCount || doctorResult.rows[0].data.activo === false) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'El médico seleccionado ya no está disponible.' });
     }
     const appointments = await getPublicAgenda(client);
-    const start = Number(hora.slice(0, 2)) * 60;
-    const conflict = appointments.some(c => {
-      if (!c || String(c.medicoId) !== String(medicoId) || c.fecha !== fecha ||
-          ['Cancelada', 'Eliminada'].includes(String(c.estado || ''))) return false;
-      const time = String(c.hora || '').slice(0, 5);
-      if (!/^\d{2}:\d{2}$/.test(time)) return false;
-      const begin = Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
-      return begin < start + 60 && begin + 60 > start;
-    });
+    const conflict = appointmentConflicts(appointments, medicoId, fecha, hora);
     if (conflict) {
       await client.query('ROLLBACK');
       return res.status(409).json({ error: 'Ese horario acaba de ocuparse. Selecciona otro horario disponible.' });
@@ -982,7 +992,7 @@ app.post('/api/public/appointments', publicAppointmentLimiter, async (req, res, 
       id, pacienteId: null, paciente: nombre, telefonoContacto: telefono,
       fechaNacimiento, edad: publicAgeFromBirthDate(fechaNacimiento),
       fecha, hora, medicoId, motivo: ['Otros síntomas', 'Otro motivo'].includes(tipo) ? otroMotivo : tipo,
-      tipoCita: tipo, estado: 'Solicitud web',
+      tipoCita: tipo, tipoPaciente, folioMembresia: tipoPaciente === 'membresia' ? folioMembresia : null, estado: 'Solicitud web',
       codigoVerificacionHash: crypto.createHash('sha256').update(codigo).digest('hex'),
       creadoPor: 'portal-publico', createdAt: now, updatedAt: now
     };
@@ -992,7 +1002,7 @@ app.post('/api/public/appointments', publicAppointmentLimiter, async (req, res, 
     catch (notificationError) { console.error('No se pudo enviar la notificación de nueva cita por correo:', notificationError.message); }
     res.status(201).json({
       ok: true, codigoVerificacion: codigo,
-      cita: { fecha, hora, medico: String(doctorResult.rows[0].data.nombre || ''), tipo }
+      cita: { fecha, hora, medico: String(doctorResult.rows[0].data.nombre || ''), tipo, tipoPaciente }
     });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
@@ -1293,9 +1303,11 @@ app.delete(
   }
 );
 
+const runMembershipNotifications = registerMembershipRoutes(app, pool, { requireAuth, requireAdmin });
+
 app.use((req, res, next) => {
   if (
-    /^\/(server\.js|package(?:-lock)?\.json|README\.md|render\.yaml|\.env(?:\.example)?|\.gitignore)(?:$|\?)/i.test(
+    /^\/(server\.js|membership-server\.js|package(?:-lock)?\.json|README\.md|render\.yaml|\.env(?:\.example)?|\.gitignore)(?:$|\?)/i.test(
       req.path
     )
   ) {
@@ -1323,6 +1335,8 @@ app.use((error, _req, res, _next) => {
 
 initDb()
   .then(() => {
+    runMembershipNotifications().catch(error => console.error('Error inicial de notificaciones de membresías:', error.message));
+    setInterval(() => runMembershipNotifications().catch(error => console.error('Error de notificaciones de membresías:', error.message)), 6 * 60 * 60 * 1000);
     app.listen(PORT, '0.0.0.0', () => {
       console.log(
         `Consultorio Médico CC escuchando en puerto ${PORT}`
