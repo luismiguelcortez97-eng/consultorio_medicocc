@@ -877,13 +877,47 @@ app.get('/api/public/appointment-availability', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 async function sendEmailAppointmentNotification(appointment, settings) {
-  const apiKey=process.env.BREVO_API_KEY;
-  const senderEmail=process.env.BREVO_SENDER_EMAIL;
-  const recipient=String(settings.notificationEmail||'').trim();
-  if(!apiKey||!senderEmail||!recipient){console.warn('Aviso por correo omitido: configura BREVO_API_KEY, BREVO_SENDER_EMAIL y el correo destinatario.');return false;}
-  const text='Se recibió una nueva solicitud de cita en Consultorio Médico CC.\n\nPaciente: '+String(appointment.paciente||'Paciente')+'\nFecha: '+String(appointment.fecha||'')+'\nHora: '+String(appointment.hora||'')+'\nTeléfono: '+String(appointment.telefonoContacto||'')+'\nMotivo: '+String(appointment.motivo||appointment.tipoCita||'')+'\n\nEntra al sistema para revisar y confirmar la solicitud.';
-  const response=await fetch('https://api.brevo.com/v3/smtp/email',{method:'POST',headers:{'api-key':apiKey,'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify({sender:{name:'Consultorio Médico CC',email:senderEmail},to:[{email:recipient}],subject:'Nueva solicitud de cita - Consultorio Médico CC',textContent:text}) ,signal:AbortSignal.timeout(10000)});
-  if(!response.ok){const detail=await response.text().catch(()=> '');throw new Error('Brevo respondió '+response.status+': '+detail.slice(0,400));}
+  const apiKey = String(process.env.BREVO_API_KEY || '').trim();
+  const senderEmail = String(process.env.BREVO_SENDER_EMAIL || '').trim();
+  const recipient = String(settings?.notificationEmail || '').trim();
+
+  // Reportar exactamente qué configuración falta, sin registrar secretos.
+  const missing = [];
+  if (!apiKey) missing.push('BREVO_API_KEY en Render > Environment');
+  if (!senderEmail) missing.push('BREVO_SENDER_EMAIL en Render > Environment');
+  if (!recipient) missing.push('correo destinatario en Configuración de la página de citas');
+  if (missing.length) {
+    console.warn('Notificación de cita omitida. Configuración vacía/no disponible: ' + missing.join('; ') + '.');
+    return false;
+  }
+
+  const text = 'Se recibió una nueva solicitud de cita en Consultorio Médico CC.\n\nPaciente: ' +
+    String(appointment.paciente || 'Paciente') + '\nFecha: ' + String(appointment.fecha || '') +
+    '\nHora: ' + String(appointment.hora || '') + '\nTeléfono: ' +
+    String(appointment.telefonoContacto || '') + '\nMotivo: ' +
+    String(appointment.motivo || appointment.tipoCita || '') +
+    '\n\nEntra al sistema para revisar y confirmar la solicitud.';
+
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'api-key': apiKey,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify({
+      sender: { name: 'Consultorio Médico CC', email: senderEmail },
+      to: [{ email: recipient }],
+      subject: 'Nueva solicitud de cita - Consultorio Médico CC',
+      textContent: text
+    }),
+    signal: AbortSignal.timeout(10000)
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    throw new Error('Brevo respondió ' + response.status + ': ' + detail.slice(0, 400));
+  }
   return true;
 }
 
