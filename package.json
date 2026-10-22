@@ -4,7 +4,17 @@
   "private": true,
   "description": "Consultorio Médico CC - aplicación web con PostgreSQL",
   "main": "server.js",
-  "scripts": {"start": "node server.js", "check": "node --check server.js && node --check js/app.js && node --check js/db.js && node --check js/reservar.js"},
-  "engines": {"node": ">=20"},
-  "dependencies": {"express": "^4.21.2", "pg": "^8.13.1", "helmet": "^8.0.0", "express-rate-limit": "^7.5.0"}
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node --check membership-server.js && node --check js/app.js && node --check js/db.js && node --check js/reservar.js && node --check js/membresias.js && node --check js/membresias-admin.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1",
+    "helmet": "^8.0.0",
+    "express-rate-limit": "^7.5.0"
+  }
 }
