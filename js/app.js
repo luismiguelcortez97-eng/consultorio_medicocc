@@ -946,6 +946,11 @@ function openConsultaModal() {
       </div>
 
       <div class="form-group">
+        <label for="c-fecha-consulta">Fecha de la consulta *</label>
+        <input type="date" class="form-control" id="c-fecha-consulta" value="${new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)}" required>
+      </div>
+
+      <div class="form-group">
         <label>Motivo de consulta *</label>
         <textarea class="form-control" id="c-motivo" rows="2"></textarea>
       </div>
@@ -1409,21 +1414,22 @@ async function saveConsulta() {
     return;
   }
 
-  // Signos vitales obligatorios
+  // Los signos vitales son opcionales.
   const ta = document.getElementById('sv-ta').value.trim();
   const fc = document.getElementById('sv-fc').value.trim();
   const fr = document.getElementById('sv-fr').value.trim();
   const temp = document.getElementById('sv-temp').value.trim();
+  const fechaConsulta = document.getElementById('c-fecha-consulta').value;
 
-  if (!ta || !fc || !fr || !temp) {
-    alert('Debe registrar al menos T.A., F.C., F.R. y Temperatura antes de finalizar la consulta.');
+  if (!fechaConsulta) {
+    alert('Seleccione la fecha de la consulta.');
     return;
   }
 
   const data = {
     pacienteId: parseInt(pacienteId),
     medicoId: parseInt(medicoId),
-    fecha: new Date().toISOString(),
+    fecha: new Date(fechaConsulta + 'T12:00:00').toISOString(),
     motivo,
     interrogatorio: document.getElementById('c-interrogatorio').value.trim(),
     cuadroClinico: document.getElementById('c-cuadro').value.trim(),
