@@ -936,6 +936,10 @@ function openConsultaModal() {
             ${pacientes.map(p => `<option value="${p.id}" data-nombre="${escapeAttr(p.nombre)}">${escapeHtml(p.nombre)}</option>`).join('')}
           </select>
         </div>
+      <div class="form-group">
+        <label for="c-fecha-consulta">Fecha de la consulta *</label>
+        <input type="date" class="form-control" id="c-fecha-consulta" value="${new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)}" required>
+      </div>
         <div class="form-group">
           <label>Médico *</label>
           <select class="form-control" id="c-medicoId" required>
@@ -943,11 +947,6 @@ function openConsultaModal() {
             ${medicos.map(m => `<option value="${m.id}">${escapeHtml(m.nombre)}</option>`).join('')}
           </select>
         </div>
-      </div>
-
-      <div class="form-group">
-        <label for="c-fecha-consulta">Fecha de la consulta *</label>
-        <input type="date" class="form-control" id="c-fecha-consulta" value="${new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)}" required>
       </div>
 
       <div class="form-group">
@@ -2433,7 +2432,7 @@ async function imprimirReceta(consultaId, plantillaId = 'default') {
         <strong>Paciente:</strong> ${p ? escapeHtml(p.nombre) : '—'}<br>
         <strong>Fecha de nacimiento:</strong> ${fechaNacPaciente ? escapeHtml(formatDate(fechaNacPaciente)) : 'No registrada'}<br>
         <strong>Edad:</strong> ${edadPaciente == null ? 'No disponible' : edadPaciente + ' años'}<br>
-        <strong>Fecha de consulta:</strong> ${formatDate(c.fecha)}
+        <strong>Fecha de consulta:</strong> ${c.fecha ? new Date(c.fecha).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
       </div>
 
       <div style="margin-bottom: 10px; font-size: 10pt;">
