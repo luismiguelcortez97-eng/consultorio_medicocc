@@ -1036,6 +1036,11 @@ function openConsultaModal() {
         </div>
       </div>
 
+      <div class="form-group">
+        <label for="c-notas-adicionales">Notas adicionales para la receta</label>
+        <textarea class="form-control" id="c-notas-adicionales" rows="3" placeholder="Indicaciones, recomendaciones u observaciones adicionales (opcional)"></textarea>
+      </div>
+
       <h4 style="margin:1.25rem 0 0.75rem; font-size:1rem;">Estudios de laboratorio indicados</h4>
       <div id="ests-list"></div>
       <div class="form-row" style="align-items:end;">
@@ -1436,6 +1441,7 @@ async function saveConsulta() {
     medicamentos: APP.tempConsulta.medicamentos,
     estudios: APP.tempConsulta.estudios,
     estudiosImagen: APP.tempConsulta.estudiosImagen || [],
+    notasAdicionales: document.getElementById('c-notas-adicionales').value.trim(),
     proximaCita: document.getElementById('c-proxima').value || null
   };
 
@@ -1491,6 +1497,7 @@ async function verConsulta(id) {
     </p>
     <p><strong>Medicamentos:</strong></p>
     <ul>${medsHtml}</ul>
+    <p><strong>Notas adicionales:</strong><br>${escapeHtml(c.notasAdicionales || '—').replace(/\n/g, '<br>')}</p>
     <p><strong>Estudios de laboratorio:</strong></p>
     <ul>${estsHtml}</ul>
     <p><strong>Estudios de imagen:</strong></p>
@@ -2448,6 +2455,8 @@ async function imprimirReceta(consultaId, plantillaId = 'default') {
         </thead>
         <tbody>${medsHtml}</tbody>
       </table>
+
+      ${c.notasAdicionales ? '<section style="margin-top:12px;font-size:10pt;white-space:pre-wrap;overflow-wrap:anywhere;"><strong>Notas adicionales:</strong><br>' + escapeHtml(c.notasAdicionales) + '</section>' : ''}
 
       <h3 style="font-size: 12pt; margin: 15px 0 8px; border-bottom: 1px solid #999;">Estudios de laboratorio</h3>
       <ul style="font-size: 10pt; margin: 0; padding-left: 20px;">${estsHtml}</ul>
