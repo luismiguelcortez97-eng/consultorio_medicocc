@@ -931,15 +931,13 @@ function openConsultaModal() {
           <datalist id="c-paciente-options">
             ${pacientes.map(p => `<option value="${escapeAttr(p.nombre)}"></option>`).join('')}
           </datalist>
+          <label for="c-fecha-consulta" style="display:block;margin-top:10px;">Fecha y hora de la consulta *</label>
+          <input type="datetime-local" class="form-control" id="c-fecha-consulta" value="${new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}" required>
           <select id="c-pacienteId" aria-hidden="true" tabindex="-1" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;">
             <option value="">— Seleccione —</option>
             ${pacientes.map(p => `<option value="${p.id}" data-nombre="${escapeAttr(p.nombre)}">${escapeHtml(p.nombre)}</option>`).join('')}
           </select>
         </div>
-      <div class="form-group">
-        <label for="c-fecha-consulta">Fecha de la consulta *</label>
-        <input type="date" class="form-control" id="c-fecha-consulta" value="${new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)}" required>
-      </div>
         <div class="form-group">
           <label>Médico *</label>
           <select class="form-control" id="c-medicoId" required>
@@ -1420,15 +1418,15 @@ async function saveConsulta() {
   const temp = document.getElementById('sv-temp').value.trim();
   const fechaConsulta = document.getElementById('c-fecha-consulta').value;
 
-  if (!fechaConsulta) {
-    alert('Seleccione la fecha de la consulta.');
+  if (!fechaConsulta || Number.isNaN(new Date(fechaConsulta).getTime())) {
+    alert('Seleccione una fecha y hora válidas para la consulta.');
     return;
   }
 
   const data = {
     pacienteId: parseInt(pacienteId),
     medicoId: parseInt(medicoId),
-    fecha: new Date(fechaConsulta + 'T12:00:00').toISOString(),
+    fecha: new Date(fechaConsulta).toISOString(),
     motivo,
     interrogatorio: document.getElementById('c-interrogatorio').value.trim(),
     cuadroClinico: document.getElementById('c-cuadro').value.trim(),
@@ -2432,7 +2430,7 @@ async function imprimirReceta(consultaId, plantillaId = 'default') {
         <strong>Paciente:</strong> ${p ? escapeHtml(p.nombre) : '—'}<br>
         <strong>Fecha de nacimiento:</strong> ${fechaNacPaciente ? escapeHtml(formatDate(fechaNacPaciente)) : 'No registrada'}<br>
         <strong>Edad:</strong> ${edadPaciente == null ? 'No disponible' : edadPaciente + ' años'}<br>
-        <strong>Fecha de consulta:</strong> ${c.fecha ? new Date(c.fecha).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
+        <strong>Fecha y hora de consulta:</strong> ${c.fecha ? new Date(c.fecha).toLocaleString('es-MX', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
       </div>
 
       <div style="margin-bottom: 10px; font-size: 10pt;">
