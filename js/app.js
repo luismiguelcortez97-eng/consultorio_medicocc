@@ -1450,6 +1450,7 @@ async function saveConsulta() {
 
   try {
     await DB.add(DB.STORES.consultas, data);
+    if (data.proximaCita) await sincronizarCitasDesdeConsultas();
     closeModal();
     document.querySelector('.modal').classList.remove('modal-lg');
     renderConsultas();
@@ -2884,8 +2885,49 @@ function localDateString(date) {
     String(date.getDate()).padStart(2, '0');
 }
 
+// Importa de forma idempotente las próximas citas guardadas en consultas anteriores.
+async function sincronizarCitasDesdeConsultas() {
+  const consultas = await DB.getAll(DB.STORES.consultas);
+  const agenda = await DB.getAll('agenda');
+  const consultasYaAgendadas = new Set(
+    agenda.map(function (c) { return c.sourceConsultaId == null ? '' : String(c.sourceConsultaId); }).filter(Boolean)
+  );
+  let agregadas = 0;
+
+  for (const consulta of consultas) {
+    const fecha = String(consulta.proximaCita || '').slice(0, 10);
+    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(fecha) || !consulta.pacienteId || !consulta.medicoId) continue;
+    if (consultasYaAgendadas.has(String(consulta.id))) continue;
+
+    // Si recepción ya agendó a ese paciente para ese día, se conserva esa cita y no se duplica.
+    const existente = agenda.some(function (c) {
+      return String(c.pacienteId) === String(consulta.pacienteId) &&
+        c.fecha === fecha && c.estado !== 'Cancelada' && c.estado !== 'Eliminada';
+    });
+    if (existente) continue;
+
+    const cita = {
+      pacienteId: Number(consulta.pacienteId),
+      fecha: fecha,
+      hora: 'Por definir',
+      medicoId: Number(consulta.medicoId),
+      motivo: 'Seguimiento de consulta: ' + String(consulta.motivo || 'Consulta médica'),
+      estado: 'Programada',
+      creadoPor: 'sistema-consultas',
+      sourceConsultaId: consulta.id,
+      createdAt: new Date().toISOString()
+    };
+    await DB.add('agenda', cita);
+    agenda.push(cita);
+    consultasYaAgendadas.add(String(consulta.id));
+    agregadas++;
+  }
+  return agregadas;
+}
+
 async function renderAgenda() {
   const area = document.getElementById('content-area');
+  await sincronizarCitasDesdeConsultas();
   const month = new Date(APP.agendaMonth.getFullYear(), APP.agendaMonth.getMonth(), 1);
   const monthStart = new Date(month.getFullYear(), month.getMonth(), 1);
   const firstDay = (monthStart.getDay() + 6) % 7;
