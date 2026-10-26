@@ -603,6 +603,7 @@ async function renderPacientes() {
                       <td>${escapeHtml(p.telefono || '—')}</td>
                       <td>${escapeHtml(getMedicoName(p.medicoId))}</td>
                       <td>
+                        <button class="btn btn-outline btn-sm" onclick="verPaciente(${p.id})">Ver datos</button>
                         <button class="btn btn-outline btn-sm" onclick="openPacienteModal(${p.id})">Editar</button>
                         <button class="btn btn-danger btn-sm" onclick="deletePaciente(${p.id})">Eliminar</button>
                       </td>
@@ -660,6 +661,29 @@ async function renderPacientes() {
 
   busqueda.addEventListener('input', filtrarPacientes);
   filtrarPacientes();
+}
+
+async function verPaciente(id) {
+  const p = await DB.get(DB.STORES.pacientes, Number(id));
+  if (!p) return alert('No se encontró el paciente.');
+  const [medicos, consultas] = await Promise.all([DB.getAll(DB.STORES.medicos), DB.getAll(DB.STORES.consultas)]);
+  const medico = medicos.find(m => String(m.id) === String(p.medicoId));
+  const historial = consultas.filter(c => !c.eliminada && String(c.pacienteId) === String(p.id)).sort((a,b) => String(b.fecha||'').localeCompare(String(a.fecha||'')));
+  const edad = calcularEdad(obtenerFechaNacimientoPaciente(p));
+  document.getElementById('modal-title').textContent = 'Datos del paciente';
+  document.getElementById('modal-body').innerHTML = `
+    <p><strong>Nombre:</strong> ${escapeHtml(p.nombre || '—')}</p>
+    <p><strong>Fecha de nacimiento:</strong> ${escapeHtml(obtenerFechaNacimientoPaciente(p) || '—')}</p>
+    <p><strong>Edad:</strong> ${edad == null ? '—' : edad + ' años'}</p>
+    <p><strong>Género:</strong> ${escapeHtml(p.genero || '—')}</p>
+    <p><strong>Teléfono:</strong> ${escapeHtml(p.telefono || '—')}</p>
+    <p><strong>Dirección:</strong> ${escapeHtml(p.direccion || '—')}</p>
+    <p><strong>Médico asignado:</strong> ${escapeHtml(medico ? medico.nombre : '—')}</p>
+    <hr><h4>Historial de consultas</h4>
+    ${historial.length ? '<div class="table-responsive"><table><thead><tr><th>Fecha</th><th>Motivo</th><th></th></tr></thead><tbody>' + historial.map(c => '<tr><td>' + escapeHtml(formatDate(c.fecha)) + '</td><td>' + escapeHtml(c.motivo || '—') + '</td><td><button class="btn btn-outline btn-sm" onclick="closeModal();verConsulta(' + Number(c.id) + ')">Ver consulta</button></td></tr>').join('') + '</tbody></table></div>' : '<p class="text-muted">Este paciente aún no tiene consultas registradas.</p>'}
+  `;
+  document.getElementById('modal-footer').innerHTML = '<button class="btn btn-secondary" onclick="closeModal()">Cerrar</button><button class="btn btn-primary" onclick="closeModal();openPacienteModal(' + Number(p.id) + ')">Editar paciente</button>';
+  document.getElementById('generic-modal').classList.add('show');
 }
 
 function openPacienteModal(id = null) {
@@ -840,11 +864,12 @@ async function renderConsultas() {
       const m = await DB.get(DB.STORES.medicos, c.medicoId);
       return `<tr>
         <td>${formatDate(c.fecha)}</td>
-        <td>${p ? escapeHtml(p.nombre) : '—'}</td>
+        <td>${p ? escapeHtml(p.nombre) + '<div class="text-muted" style="font-size:.82rem">Edad: ' + (calcularEdad(obtenerFechaNacimientoPaciente(p)) == null ? '—' : calcularEdad(obtenerFechaNacimientoPaciente(p)) + ' años') + ' · Nacimiento: ' + escapeHtml(obtenerFechaNacimientoPaciente(p) || '—') + ' · Tel: ' + escapeHtml(p.telefono || '—') + '</div><button class="btn btn-outline btn-sm" onclick="verPaciente(' + Number(p.id) + ')">Datos del paciente</button>' : '—'}</td>
         <td>${m ? escapeHtml(m.nombre) : '—'}</td>
         <td>${escapeHtml((c.motivo || '').substring(0, 50))}${(c.motivo || '').length > 50 ? '…' : ''}</td>
         <td>
           <button class="btn btn-outline btn-sm" onclick="verConsulta(${c.id})">Ver</button>
+          <button class="btn btn-outline btn-sm" onclick="openConsultaModal(${c.id})">Editar consulta</button>
           <button class="btn btn-primary btn-sm" onclick="elegirTipoReceta(${c.id})">Receta</button>
           <button class="btn btn-success btn-sm" onclick="registrarCobroConsulta(${c.id})">${c.cobroId ? 'Ver cobro registrado' : 'Registrar cobros'}</button>
           <button class="btn btn-danger btn-sm" onclick="eliminarConsulta(${c.id})">Eliminar</button>
@@ -886,12 +911,10 @@ async function eliminarConsulta(id) {
 }
 
 
-function openConsultaModal() {
-  APP.editingId = null;
+function openConsultaModal(id = null) {
+  APP.editingId = id == null ? null : Number(id);
   APP.tempConsulta = {
-    medicamentos: [],
-    estudios: [],
-    estudiosImagen: [],
+    medicamentos: [], estudios: [], estudiosImagen: [],
     signos: { ta: '', fc: '', fr: '', temp: '', peso: '', talla: '', spo2: '' }
   };
 
@@ -901,9 +924,17 @@ function openConsultaModal() {
   const body = document.getElementById('modal-body');
   const footer = document.getElementById('modal-footer');
 
-  title.textContent = 'Nueva Consulta Médica';
+  title.textContent = APP.editingId ? 'Editar Consulta Médica' : 'Nueva Consulta Médica';
 
   const load = async () => {
+    const consultaExistente = APP.editingId ? await DB.get(DB.STORES.consultas, APP.editingId) : null;
+    if (APP.editingId && (!consultaExistente || consultaExistente.eliminada)) { alert('No se encontró una consulta activa para editar.'); closeModal(); return; }
+    if (consultaExistente) APP.tempConsulta = {
+      medicamentos: Array.isArray(consultaExistente.medicamentos) ? consultaExistente.medicamentos.map(x => ({...x})) : [],
+      estudios: Array.isArray(consultaExistente.estudios) ? [...consultaExistente.estudios] : [],
+      estudiosImagen: Array.isArray(consultaExistente.estudiosImagen) ? [...consultaExistente.estudiosImagen] : [],
+      signos: {...(consultaExistente.signosVitales || {})}
+    };
     const pacientes = await DB.getAll(DB.STORES.pacientes);
     const medicos = (await DB.getAll(DB.STORES.medicos)).filter(m => m.activo !== false);
     const meds = await DB.getAll(DB.STORES.medicamentos);
@@ -1077,9 +1108,29 @@ function openConsultaModal() {
       </div>
     `;
 
+    if (consultaExistente) {
+      const paciente = pacientes.find(p => String(p.id) === String(consultaExistente.pacienteId));
+      document.getElementById('c-paciente-search').value = paciente ? paciente.nombre : '';
+      document.getElementById('c-pacienteId').value = String(consultaExistente.pacienteId || '');
+      const fecha = new Date(consultaExistente.fecha || Date.now());
+      document.getElementById('c-fecha-consulta').value = Number.isNaN(fecha.getTime()) ? '' : new Date(fecha.getTime() - fecha.getTimezoneOffset()*60000).toISOString().slice(0,16);
+      document.getElementById('c-medicoId').value = String(consultaExistente.medicoId || '');
+      document.getElementById('c-motivo').value = consultaExistente.motivo || '';
+      document.getElementById('c-interrogatorio').value = consultaExistente.interrogatorio || '';
+      document.getElementById('c-cuadro').value = consultaExistente.cuadroClinico || '';
+      document.getElementById('c-exploracion').value = consultaExistente.exploracion || '';
+      document.getElementById('c-tratamiento').value = consultaExistente.tratamiento || '';
+      const sv = consultaExistente.signosVitales || {};
+      document.getElementById('sv-ta').value = sv.ta || ''; document.getElementById('sv-fc').value = sv.fc || '';
+      document.getElementById('sv-fr').value = sv.fr || ''; document.getElementById('sv-temp').value = sv.temp || '';
+      document.getElementById('sv-peso').value = sv.peso || ''; document.getElementById('sv-talla').value = sv.talla || '';
+      document.getElementById('sv-spo2').value = sv.spo2 || '';
+      document.getElementById('c-notas-adicionales').value = consultaExistente.notasAdicionales || '';
+      document.getElementById('c-proxima').value = consultaExistente.proximaCita || '';
+    }
     footer.innerHTML = `
       <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="saveConsulta()">Guardar Consulta</button>
+      <button class="btn btn-primary" onclick="saveConsulta()">Guardar cambios</button>
     `;
 
     const pacienteSearch = document.getElementById('c-paciente-search');
@@ -1449,12 +1500,18 @@ async function saveConsulta() {
   };
 
   try {
-    await DB.add(DB.STORES.consultas, data);
+    if (APP.editingId) {
+      const existente = await DB.get(DB.STORES.consultas, APP.editingId);
+      if (!existente || existente.eliminada) throw new Error('La consulta ya no está disponible para editar.');
+      await DB.put(DB.STORES.consultas, {...existente, ...data, id: APP.editingId});
+    } else {
+      await DB.add(DB.STORES.consultas, data);
+    }
     if (data.proximaCita) await sincronizarCitasDesdeConsultas();
     closeModal();
     document.querySelector('.modal').classList.remove('modal-lg');
     renderConsultas();
-    alert('Consulta guardada correctamente.');
+    alert(APP.editingId ? 'Consulta actualizada correctamente.' : 'Consulta guardada correctamente.');
   } catch (err) {
     alert('Error al guardar: ' + err.message);
   }
@@ -1488,7 +1545,7 @@ async function verConsulta(id) {
   document.getElementById('modal-title').textContent = 'Detalle de Consulta';
   document.getElementById('modal-body').innerHTML = `
     <p><strong>Fecha:</strong> ${formatDate(c.fecha)}</p>
-    <p><strong>Paciente:</strong> ${p ? escapeHtml(p.nombre) : '—'}</p>
+    <p><strong>Paciente:</strong> ${p ? escapeHtml(p.nombre) : '—'} · <strong>Edad:</strong> ${edadPaciente == null ? '—' : edadPaciente + ' años'} · <strong>Fecha de nacimiento:</strong> ${escapeHtml(fechaNacPaciente || '—')}</p>
     <p><strong>Médico:</strong> ${m ? escapeHtml(m.nombre) : '—'}</p>
     <p><strong>Motivo:</strong> ${escapeHtml(c.motivo || '—')}</p>
     <p><strong>Interrogatorio:</strong> ${escapeHtml(c.interrogatorio || '—')}</p>
@@ -2609,11 +2666,12 @@ function escapeAttr(str) {
 function formatDate(iso) {
   if (!iso) return '—';
   try {
-    const d = new Date(iso);
-    return d.toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return iso;
-  }
+    const raw = String(iso);
+    const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(raw);
+    const d = dateOnly ? new Date(Number(raw.slice(0,4)), Number(raw.slice(5,7))-1, Number(raw.slice(8,10))) : new Date(raw);
+    if (Number.isNaN(d.getTime())) return raw;
+    return d.toLocaleDateString('es-MX', dateOnly ? {year:'numeric',month:'short',day:'numeric'} : {year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  } catch { return String(iso); }
 }
 
 // Expose functions needed by inline onclick
@@ -2621,6 +2679,7 @@ window.openMedicoModal = openMedicoModal;
 window.saveMedico = saveMedico;
 window.toggleMedico = toggleMedico;
 window.openPacienteModal = openPacienteModal;
+window.verPaciente = verPaciente;
 window.savePaciente = savePaciente;
 window.deletePaciente = deletePaciente;
 window.openConsultaModal = openConsultaModal;
