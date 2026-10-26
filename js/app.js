@@ -2666,7 +2666,7 @@ function escapeAttr(str) {
 function formatBirthDate(value) {
   if (!value) return '—';
   const raw = String(value).slice(0, 10);
-  const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(raw);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
   if (!match) return String(value);
   const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
   return d.toLocaleDateString('es-MX', {year:'numeric', month:'short', day:'numeric'});
