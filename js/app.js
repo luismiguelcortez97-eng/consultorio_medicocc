@@ -501,6 +501,18 @@ function openMedicoModal(id = null) {
       <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn btn-primary" onclick="saveMedico()">Guardar</button>
     `;
+    const fechaTexto = document.getElementById('p-fechaNac-text');
+    const fechaCalendario = document.getElementById('p-fechaNac-calendario');
+    fechaCalendario.addEventListener('change', function () {
+      fechaTexto.value = this.value ? this.value.slice(8, 10) + '/' + this.value.slice(5, 7) + '/' + this.value.slice(0, 4) : '';
+      fechaTexto.setCustomValidity('');
+    });
+    fechaTexto.addEventListener('input', function () {
+      const iso = convertirFechaNacimientoAISO(this.value);
+      fechaTexto.setCustomValidity(this.value.trim() && !iso ? 'Fecha inválida. Usa DD/MM/AAAA con año de cuatro dígitos.' : '');
+      if (iso) fechaCalendario.value = iso;
+      else if (!this.value.trim()) fechaCalendario.value = '';
+    });
   };
 
   load();
@@ -513,6 +525,15 @@ async function saveMedico() {
     alert('El nombre es obligatorio');
     return;
   }
+
+  const campoFechaNacimiento = document.getElementById('p-fechaNac-text');
+  const fechaNac = convertirFechaNacimientoAISO(campoFechaNacimiento.value);
+  if (campoFechaNacimiento.value.trim() && !fechaNac) {
+    campoFechaNacimiento.setCustomValidity('Fecha inválida. Usa DD/MM/AAAA con año de cuatro dígitos.');
+    campoFechaNacimiento.reportValidity();
+    return;
+  }
+  campoFechaNacimiento.setCustomValidity('');
 
   const data = {
     nombre,
@@ -707,8 +728,13 @@ function openPacienteModal(id = null) {
           <input type="text" class="form-control" id="p-nombre" value="${escapeAttr(p.nombre)}" required>
         </div>
         <div class="form-group">
-          <label>Fecha de nacimiento</label>
-          <input type="date" class="form-control" id="p-fechaNac" value="${escapeAttr(String(p.fechaNac || '').slice(0, 10))}">
+          <label for="p-fechaNac-text">Fecha de nacimiento</label>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.5rem;align-items:center">
+            <input type="text" class="form-control" id="p-fechaNac-text" inputmode="numeric" autocomplete="bday" placeholder="DD/MM/AAAA" maxlength="10" aria-describedby="p-fechaNac-ayuda" value="${escapeAttr(formatearFechaNacimientoEntrada(p.fechaNac || p.fechaNacimiento || p.fecha_nacimiento || ''))}">
+            <label class="btn btn-outline" for="p-fechaNac-calendario" style="margin:0;white-space:nowrap;cursor:pointer">📅 Calendario</label>
+            <input type="date" id="p-fechaNac-calendario" aria-label="Elegir fecha de nacimiento en calendario" value="${escapeAttr(normalizarFechaNacimientoISO(p.fechaNac || p.fechaNacimiento || p.fecha_nacimiento || ''))}" style="max-width:100%;grid-column:1 / -1">
+          </div>
+          <small id="p-fechaNac-ayuda" class="text-muted">Escribe DD/MM/AAAA o selecciona la fecha en el calendario. El año debe tener 4 dígitos.</small>
         </div>
       </div>
       <div class="form-row">
@@ -758,7 +784,7 @@ async function savePaciente() {
 
   const data = {
     nombre,
-    fechaNac: document.getElementById('p-fechaNac').value,
+    fechaNac,
     genero: document.getElementById('p-genero').value,
     telefono: document.getElementById('p-telefono').value.trim(),
     direccion: document.getElementById('p-direccion').value.trim(),
@@ -3214,14 +3240,43 @@ function obtenerFechaNacimientoPaciente(paciente) {
   return paciente ? (paciente.fechaNac || paciente.fechaNacimiento || paciente.fecha_nacimiento || '') : '';
 }
 
+// Las fechas de nacimiento son fechas de calendario, no instantes UTC.
+function normalizarFechaNacimientoISO(valor) {
+  if (!valor) return '';
+  const raw = String(valor).trim();
+  let match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw.slice(0, 10));
+  if (!match) {
+    match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(raw);
+    if (match) match = [match[0], match[3], match[2], match[1]];
+  }
+  if (!match) return '';
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  if (year < 1 || year > 9999 || date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return '';
+  return String(year).padStart(4, '0') + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+}
+
+function formatearFechaNacimientoEntrada(valor) {
+  const iso = normalizarFechaNacimientoISO(valor);
+  return iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : '';
+}
+
+function convertirFechaNacimientoAISO(valor) {
+  const raw = String(valor || '').trim();
+  if (!raw) return '';
+  let match = /^(\d{2})[\/.-](\d{2})[\/.-](\d{4})$/.exec(raw);
+  if (match) return normalizarFechaNacimientoISO(match[3] + '-' + match[2] + '-' + match[1]);
+  match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  return match ? normalizarFechaNacimientoISO(raw) : '';
+}
+
 function calcularEdad(fechaNacimiento) {
-  if (!fechaNacimiento) return null;
-  const nacimiento = new Date(String(fechaNacimiento).slice(0, 10) + 'T00:00:00');
-  if (Number.isNaN(nacimiento.getTime())) return null;
+  const iso = normalizarFechaNacimientoISO(fechaNacimiento);
+  if (!iso) return null;
+  const nacimiento = { year: Number(iso.slice(0, 4)), month: Number(iso.slice(5, 7)), day: Number(iso.slice(8, 10)) };
   const hoy = new Date();
-  let edad = hoy.getFullYear() - nacimiento.getFullYear();
-  const diferenciaMes = hoy.getMonth() - nacimiento.getMonth();
-  if (diferenciaMes < 0 || (diferenciaMes === 0 && hoy.getDate() < nacimiento.getDate())) edad--;
+  let edad = hoy.getFullYear() - nacimiento.year;
+  if (hoy.getMonth() + 1 < nacimiento.month || (hoy.getMonth() + 1 === nacimiento.month && hoy.getDate() < nacimiento.day)) edad--;
   return edad >= 0 ? edad : null;
 }
 
