@@ -1499,8 +1499,9 @@ async function saveConsulta() {
     proximaCita: document.getElementById('c-proxima').value || null
   };
 
+  const estabaEditando = APP.editingId != null;
   try {
-    if (APP.editingId) {
+    if (estabaEditando) {
       const existente = await DB.get(DB.STORES.consultas, APP.editingId);
       if (!existente || existente.eliminada) throw new Error('La consulta ya no está disponible para editar.');
       await DB.put(DB.STORES.consultas, {...existente, ...data, id: APP.editingId});
@@ -1511,7 +1512,7 @@ async function saveConsulta() {
     closeModal();
     document.querySelector('.modal').classList.remove('modal-lg');
     renderConsultas();
-    alert(APP.editingId ? 'Consulta actualizada correctamente.' : 'Consulta guardada correctamente.');
+    alert(estabaEditando ? 'Consulta actualizada correctamente.' : 'Consulta guardada correctamente.');
   } catch (err) {
     alert('Error al guardar: ' + err.message);
   }
