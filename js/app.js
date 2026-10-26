@@ -598,7 +598,7 @@ async function renderPacientes() {
                   ${pacientes.map(p => `
                     <tr data-paciente-busqueda="${escapeAttr([p.nombre || '', p.telefono || '', p.fechaNac || '', p.genero || '', getMedicoName(p.medicoId)].join(' '))}">
                       <td><strong>${escapeHtml(p.nombre || '—')}</strong></td>
-                      <td>${p.fechaNac ? escapeHtml(formatDate(p.fechaNac)) : '—'}</td>
+                      <td>${p.fechaNac ? escapeHtml(formatBirthDate(p.fechaNac)) : '—'}</td>
                       <td>${escapeHtml(p.genero || '—')}</td>
                       <td>${escapeHtml(p.telefono || '—')}</td>
                       <td>${escapeHtml(getMedicoName(p.medicoId))}</td>
@@ -673,7 +673,7 @@ async function verPaciente(id) {
   document.getElementById('modal-title').textContent = 'Datos del paciente';
   document.getElementById('modal-body').innerHTML = `
     <p><strong>Nombre:</strong> ${escapeHtml(p.nombre || '—')}</p>
-    <p><strong>Fecha de nacimiento:</strong> ${escapeHtml(obtenerFechaNacimientoPaciente(p) || '—')}</p>
+    <p><strong>Fecha de nacimiento:</strong> ${escapeHtml(obtenerFechaNacimientoPaciente(p) ? formatBirthDate(obtenerFechaNacimientoPaciente(p)) : '—')}</p>
     <p><strong>Edad:</strong> ${edad == null ? '—' : edad + ' años'}</p>
     <p><strong>Género:</strong> ${escapeHtml(p.genero || '—')}</p>
     <p><strong>Teléfono:</strong> ${escapeHtml(p.telefono || '—')}</p>
@@ -708,7 +708,7 @@ function openPacienteModal(id = null) {
         </div>
         <div class="form-group">
           <label>Fecha de nacimiento</label>
-          <input type="date" class="form-control" id="p-fechaNac" value="${p.fechaNac || ''}">
+          <input type="date" class="form-control" id="p-fechaNac" value="${escapeAttr(String(p.fechaNac || '').slice(0, 10))}">
         </div>
       </div>
       <div class="form-row">
@@ -1130,7 +1130,7 @@ function openConsultaModal(id = null) {
     }
     footer.innerHTML = `
       <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="saveConsulta()">Guardar cambios</button>
+      <button class="btn btn-primary" onclick="saveConsulta()">${APP.editingId ? 'Guardar cambios' : 'Guardar Consulta'}</button>
     `;
 
     const pacienteSearch = document.getElementById('c-paciente-search');
@@ -2486,7 +2486,7 @@ async function imprimirReceta(consultaId, plantillaId = 'default') {
 
       <div style="margin-bottom: 12px; font-size: 10pt;">
         <strong>Paciente:</strong> ${p ? escapeHtml(p.nombre) : '—'}<br>
-        <strong>Fecha de nacimiento:</strong> ${fechaNacPaciente ? escapeHtml(formatDate(fechaNacPaciente)) : 'No registrada'}<br>
+        <strong>Fecha de nacimiento:</strong> ${fechaNacPaciente ? escapeHtml(formatBirthDate(fechaNacPaciente)) : 'No registrada'}<br>
         <strong>Edad:</strong> ${edadPaciente == null ? 'No disponible' : edadPaciente + ' años'}<br>
         <strong>Fecha y hora de consulta:</strong> ${c.fecha ? new Date(c.fecha).toLocaleString('es-MX', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
       </div>
@@ -2661,6 +2661,15 @@ function escapeHtml(str) {
 
 function escapeAttr(str) {
   return escapeHtml(str).replace(/\n/g, ' ');
+}
+
+function formatBirthDate(value) {
+  if (!value) return '—';
+  const raw = String(value).slice(0, 10);
+  const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(raw);
+  if (!match) return String(value);
+  const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return d.toLocaleDateString('es-MX', {year:'numeric', month:'short', day:'numeric'});
 }
 
 function formatDate(iso) {
