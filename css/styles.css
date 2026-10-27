@@ -1059,3 +1059,24 @@ body.tema-suave .study-search-results,
 
 /* Selección de tipo de paciente en citas públicas */
 .booking-patient-types{display:flex;gap:12px;flex-wrap:wrap}.booking-patient-types label{display:flex;align-items:center;gap:8px;flex:1;min-width:180px;padding:12px;border:1px solid #ccd6e3;border-radius:9px;background:#f7faff;cursor:pointer}.booking-patient-types input{width:18px;height:18px;min-height:18px;accent-color:#1459a6}.booking-patient-types label:has(input:checked){border-color:#1459a6;background:#edf5ff}
+
+
+/* Identidad visual Consultorio Médico CC */
+.brand-logo {
+  display: block;
+  height: auto;
+  object-fit: contain;
+}
+.brand-logo-login {
+  width: min(100%, 330px);
+  margin: 0 auto 1.25rem;
+}
+.brand-logo-sidebar {
+  width: min(100%, 220px);
+  max-height: 66px;
+  margin: 0 auto 0.35rem;
+  border-radius: 4px;
+}
+.sidebar-header {
+  text-align: center;
+}
