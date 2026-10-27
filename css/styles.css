@@ -211,12 +211,14 @@ body {
 
 .brand-logo-sidebar {
   display: block;
-  width: 100%;
-  max-width: 252px;
-  max-height: 148px;
+  width: min(100%, 190px);
+  max-height: 94px;
   margin: 0 auto .6rem;
   background: transparent;
   object-fit: contain;
+  /* El fondo blanco del JPG se funde con el azul del menú; la marca queda clara. */
+  filter: grayscale(1) invert(1) contrast(1.12);
+  mix-blend-mode: screen;
 }
 
 .brand-logo-login {
