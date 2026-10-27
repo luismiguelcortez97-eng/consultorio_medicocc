@@ -2619,20 +2619,23 @@ async function imprimirReceta(consultaId, plantillaId = 'default') {
       @media print { #print-area .rx-consulta-print { max-width: none; margin: 0; } }
     </style>
     <div class="rx-consulta-print" style="font-family: 'Times New Roman', serif; max-width: ${plantilla && plantilla.fondoImagen ? '216mm' : '800px'}; margin: 0 auto;">
-      <div style="position:relative; text-align:center; border-bottom:1px solid #333; padding:0 0 10px; margin-bottom:14px;">
-        <h2 style="margin:0 0 8px; font-size:18pt; color:#111 !important; letter-spacing:.04em;">${titulo}</h2>
-        <img src="${window.location.origin}/assets/logo-consultorio-cc-original.jpg?v=20261030" alt="Consultorio Médico CC" style="display:block;width:190px;max-width:48%;height:auto;margin:0 auto 8px;filter:grayscale(1) contrast(1.12);">
-        ${m ? `
-          <div style="font-size:10pt; line-height:1.35; text-align:center;">
-            <strong style="font-size:12pt;">Dr(a). ${escapeHtml(m.nombre)}</strong><br>
-            <strong>${escapeHtml(m.institucion || 'Consultorio Médico CC')}</strong><br>
-            ${m.especialidad ? 'Especialidad: ' + escapeHtml(m.especialidad) + '<br>' : ''}
-            ${m.cedula ? 'Cédula profesional: ' + escapeHtml(m.cedula) + '<br>' : ''}
-            ${m.cedulaEsp ? 'Cédula de especialidad: ' + escapeHtml(m.cedulaEsp) + '<br>' : ''}
-            ${domicilioReceta ? 'Domicilio: ' + escapeHtml(domicilioReceta) + '<br>' : ''}
-            ${telefonoReceta ? 'Tel: ' + escapeHtml(telefonoReceta) : ''}
+      <div style="border-bottom:1px solid #333; padding:0 0 12px; margin-bottom:14px; color:#111;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:18px; min-height:76px;">
+          <div style="flex:1 1 58%; min-width:0; text-align:left;">
+            <img src="${window.location.origin}/assets/logo-consultorio-cc-original.jpg?v=20261030" alt="Consultorio Médico CC" style="display:block;width:100%;max-width:300px;max-height:92px;object-fit:contain;object-position:left center;filter:grayscale(1) contrast(1.12);">
           </div>
-        ` : ''}
+          ${m ? `
+            <div style="flex:0 1 42%; min-width:0; font-size:9pt; line-height:1.35; text-align:right;">
+              <strong style="font-size:11pt;">Dr(a). ${escapeHtml(m.nombre)}</strong><br>
+              ${escapeHtml(m.especialidad || 'Médico General')}<br>
+              ${m.cedula ? 'Céd. Prof. ' + escapeHtml(m.cedula) + '<br>' : ''}
+              ${m.cedulaEsp ? 'Céd. Esp. ' + escapeHtml(m.cedulaEsp) + '<br>' : ''}
+              ${domicilioReceta ? escapeHtml(domicilioReceta) + '<br>' : ''}
+              ${telefonoReceta ? escapeHtml(telefonoReceta) : ''}
+            </div>
+          ` : ''}
+        </div>
+        <h2 style="margin:12px 0 0; text-align:center; font-family:Arial,sans-serif; font-size:16pt; color:#111 !important;">${titulo}</h2>
       </div>
 
       <div style="margin-bottom: 12px; font-size: 10pt;">
