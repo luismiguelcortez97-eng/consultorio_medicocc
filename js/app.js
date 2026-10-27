@@ -964,6 +964,7 @@ function openConsultaModal(id = null) {
     const pacientes = await DB.getAll(DB.STORES.pacientes);
     const medicos = (await DB.getAll(DB.STORES.medicos)).filter(m => m.activo !== false);
     const meds = await DB.getAll(DB.STORES.medicamentos);
+    APP.consultaMedicamentosCatalogo = meds;
     const ests = await DB.getAll(DB.STORES.estudios);
     const estudiosImagenBase = [
       'Radiografía de tórax PA', 'Radiografía de tórax PA y lateral', 'Radiografía de abdomen simple',
@@ -1069,6 +1070,7 @@ function openConsultaModal(id = null) {
           <label>Buscar medicamento</label>
           <input type="text" class="form-control" id="add-med-search" name="clinical-medication-search-field" placeholder="Escribe para buscar medicamento..." autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" readonly onfocus="this.removeAttribute('readonly')">
           <div id="add-med-results" class="recipe-med-results"></div>
+          <button type="button" class="btn btn-secondary btn-sm" style="margin-top:.45rem" onclick="registrarMedicamentoDesdeConsulta()">Medicamento no listado</button>
           <select class="form-control" id="add-med-id" style="display:none">
             <option value="">— Seleccione —</option>
             ${meds.map(m => `<option value="${m.id}">${escapeHtml(m.nombre)} ${m.presentacion || ''} ${m.concentracion || ''}</option>`).join('')}
@@ -1214,7 +1216,10 @@ function openConsultaModal(id = null) {
       const matches = q ? meds.filter(m => [m.nombre, m.presentacion, m.concentracion].join(' ').toLocaleLowerCase('es-MX').includes(q)).slice(0, 12) : [];
       medResults.innerHTML = matches.map(m => '<button type="button" class="recipe-med-result" data-med-id="' + Number(m.id) + '">' +
         escapeHtml(m.nombre || '') + ' — ' + escapeHtml(m.presentacion || '') + ' ' + escapeHtml(m.concentracion || '') + '</button>').join('');
-      medResults.style.display = matches.length ? 'block' : 'none';
+      if (q && matches.length === 0) {
+        medResults.innerHTML = '<p class="text-muted" style="padding:.5rem;margin:0">No se encontraron medicamentos en el catálogo.</p>';
+      }
+      medResults.style.display = q ? 'block' : 'none';
       medResults.querySelectorAll('[data-med-id]').forEach(button => button.addEventListener('click', function () {
         document.getElementById('add-med-id').value = button.dataset.medId;
         medSearchInput.value = button.textContent.trim();
@@ -1743,13 +1748,59 @@ async function saveMedicamento() {
       data.id = APP.editingId;
       await DB.put(DB.STORES.medicamentos, data);
     } else {
-      await DB.add(DB.STORES.medicamentos, data);
+      data.id = await DB.add(DB.STORES.medicamentos, data);
     }
-    closeModal();
-    renderMedicamentos();
+    if (APP.regresarConsultaMedicamento) {
+      const returnState = APP.regresarConsultaMedicamento;
+      APP.regresarConsultaMedicamento = null;
+      const modal = document.getElementById('generic-modal');
+      const body = document.getElementById('modal-body');
+      body.replaceChildren(...returnState.bodyNodes);
+      document.getElementById('modal-title').textContent = returnState.title;
+      document.getElementById('modal-footer').innerHTML = returnState.footer;
+      modal.querySelector('.modal').classList.toggle('modal-lg', returnState.large);
+      modal.classList.add('show');
+      APP.editingId = returnState.editingId;
+      const catalogo = APP.consultaMedicamentosCatalogo || [];
+      const saved = {...data};
+      const index = catalogo.findIndex(m => String(m.id) === String(saved.id));
+      if (index >= 0) catalogo[index] = saved; else catalogo.push(saved);
+      const selector = document.getElementById('add-med-id');
+      if (selector) {
+        let option = Array.from(selector.options).find(o => String(o.value) === String(saved.id));
+        if (!option) { option = document.createElement('option'); option.value = String(saved.id); selector.appendChild(option); }
+        option.textContent = [saved.nombre, saved.presentacion, saved.concentracion].filter(Boolean).join(' ');
+      }
+      const search = document.getElementById('add-med-search');
+      if (search) {
+        search.value = [saved.nombre, saved.presentacion, saved.concentracion].filter(Boolean).join(' — ');
+        const idSelector = document.getElementById('add-med-id');
+        if (idSelector) idSelector.value = String(saved.id);
+      }
+      const results = document.getElementById('add-med-results');
+      if (results) { results.innerHTML = ''; results.style.display = 'none'; }
+      alert('Medicamento guardado en el catálogo. Ya está seleccionado para esta consulta; completa la dosis e indicaciones y pulsa Agregar.');
+    } else {
+      closeModal();
+      renderMedicamentos();
+    }
   } catch (err) {
     alert('Error: ' + err.message);
   }
+}
+
+function registrarMedicamentoDesdeConsulta() {
+  const modal = document.getElementById('generic-modal');
+  const body = document.getElementById('modal-body');
+  if (!modal || !body || !document.getElementById('add-med-search')) return;
+  APP.regresarConsultaMedicamento = {
+    bodyNodes: Array.from(body.childNodes),
+    title: document.getElementById('modal-title').textContent,
+    footer: document.getElementById('modal-footer').innerHTML,
+    large: modal.querySelector('.modal').classList.contains('modal-lg'),
+    editingId: APP.editingId
+  };
+  openMedicamentoModal();
 }
 
 async function deleteMedicamento(id) {
@@ -2746,6 +2797,7 @@ window.removeMedFromConsulta = removeMedFromConsulta;
 window.addEstToConsulta = addEstToConsulta;
 window.removeEstFromConsulta = removeEstFromConsulta;
 window.openMedicamentoModal = openMedicamentoModal;
+window.registrarMedicamentoDesdeConsulta = registrarMedicamentoDesdeConsulta;
 window.saveMedicamento = saveMedicamento;
 window.deleteMedicamento = deleteMedicamento;
 window.openEstudioModal = openEstudioModal;
