@@ -1208,17 +1208,29 @@ function openConsultaModal(id = null) {
     imagenSearchInput.addEventListener('focus', renderImagenResults);
     imagenSearchInput.addEventListener('blur', () => setTimeout(() => { if (imagenResults) imagenResults.style.display = 'none'; }, 180));
     const medSearchInput = document.getElementById('add-med-search');
-    medSearchInput.addEventListener('input', function () {
+    const medResults = document.getElementById('add-med-results');
+    const renderMedSearchResults = function () {
       const q = medSearchInput.value.trim().toLocaleLowerCase('es-MX');
-      const results = document.getElementById('add-med-results');
       const matches = q ? meds.filter(m => [m.nombre, m.presentacion, m.concentracion].join(' ').toLocaleLowerCase('es-MX').includes(q)).slice(0, 12) : [];
-      results.innerHTML = matches.map(m => '<button type="button" class="recipe-med-result" data-med-id="' + Number(m.id) + '">' +
+      medResults.innerHTML = matches.map(m => '<button type="button" class="recipe-med-result" data-med-id="' + Number(m.id) + '">' +
         escapeHtml(m.nombre || '') + ' — ' + escapeHtml(m.presentacion || '') + ' ' + escapeHtml(m.concentracion || '') + '</button>').join('');
-      results.querySelectorAll('[data-med-id]').forEach(button => button.addEventListener('click', function () {
+      medResults.style.display = matches.length ? 'block' : 'none';
+      medResults.querySelectorAll('[data-med-id]').forEach(button => button.addEventListener('click', function () {
         document.getElementById('add-med-id').value = button.dataset.medId;
-        medSearchInput.value = button.textContent;
-        results.innerHTML = '';
+        medSearchInput.value = button.textContent.trim();
+        medResults.innerHTML = '';
+        medResults.style.display = 'none';
       }));
+    };
+    medSearchInput.addEventListener('input', function () {
+      document.getElementById('add-med-id').value = '';
+      renderMedSearchResults();
+    });
+    medSearchInput.addEventListener('focus', renderMedSearchResults);
+    medSearchInput.addEventListener('blur', function () {
+      setTimeout(function () {
+        if (medResults && !medResults.matches(':hover')) medResults.style.display = 'none';
+      }, 180);
     });
 
     renderTempMeds();
@@ -1231,31 +1243,39 @@ function openConsultaModal(id = null) {
 }
 
 function addMedToConsulta() {
-  const id = document.getElementById('add-med-id').value;
-  if (!id) return;
+  const selector = document.getElementById('add-med-id');
+  const search = document.getElementById('add-med-search');
+  const results = document.getElementById('add-med-results');
+  const id = selector ? selector.value : '';
+  if (!id) {
+    alert('Primero busca y selecciona un medicamento de la lista de resultados.');
+    if (search) search.focus();
+    return;
+  }
+  if (!APP.tempConsulta) APP.tempConsulta = { medicamentos: [], estudios: [], estudiosImagen: [], signos: {} };
+  if (!Array.isArray(APP.tempConsulta.medicamentos)) APP.tempConsulta.medicamentos = [];
   const meds = APP.tempConsulta.medicamentos;
-  // prevent duplicates by id
-  if (meds.find(m => m.medicamentoId == id)) {
-    alert('Este medicamento ya está agregado');
+  if (meds.some(m => String(m.medicamentoId) === String(id))) {
+    alert('Este medicamento ya está agregado. Busca y selecciona otro medicamento.');
+    if (search) { search.focus(); search.select(); }
     return;
   }
   meds.push({
-    medicamentoId: parseInt(id),
+    medicamentoId: Number.parseInt(id, 10),
     dosis: document.getElementById('add-med-dosis').value.trim() || '—',
     via: document.getElementById('add-med-via').value.trim() || 'Oral',
     frecuencia: document.getElementById('add-med-freq').value.trim() || '—',
     duracion: document.getElementById('add-med-dur').value.trim() || '—'
   });
-  // Limpia toda la captura para poder agregar el siguiente medicamento.
-  document.getElementById('add-med-id').value = '';
-  document.getElementById('add-med-search').value = '';
-  document.getElementById('add-med-results').innerHTML = '';
+  selector.value = '';
+  search.value = '';
+  if (results) { results.innerHTML = ''; results.style.display = 'none'; }
   document.getElementById('add-med-dosis').value = '';
   document.getElementById('add-med-via').value = '';
   document.getElementById('add-med-freq').value = '';
   document.getElementById('add-med-dur').value = '';
-  document.getElementById('add-med-search').focus();
   renderTempMeds();
+  if (search) search.focus();
 }
 
 function removeMedFromConsulta(idx) {
