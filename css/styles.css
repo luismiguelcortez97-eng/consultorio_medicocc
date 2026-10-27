@@ -210,12 +210,17 @@ body {
 }
 
 .brand-logo-sidebar {
+  display: block;
   width: 100%;
-  max-width: 224px;
-  max-height: 88px;
+  max-width: 246px;
+  max-height: 132px;
   margin: 0 auto .6rem;
   background: transparent;
   object-fit: contain;
+  /* Invertir el logo original solo en el menú: los trazos oscuros pasan a claros
+     y el fondo blanco se funde con el azul noche mediante screen. */
+  filter: invert(1) grayscale(1) brightness(1.12);
+  mix-blend-mode: screen;
 }
 
 .brand-logo-login {
