@@ -2619,9 +2619,9 @@ async function imprimirReceta(consultaId, plantillaId = 'default') {
       @media print { #print-area .rx-consulta-print { max-width: none; margin: 0; } }
     </style>
     <div class="rx-consulta-print" style="font-family: 'Times New Roman', serif; max-width: ${plantilla && plantilla.fondoImagen ? '216mm' : '800px'}; margin: 0 auto;">
-      <div style="text-align: center; border-bottom: 1px solid #6e89a7; padding-bottom: 10px; margin-bottom: 15px;">
-        <img src="${window.location.origin}/assets/logo-consultorio-cc.svg?v=20261027" alt="Consultorio Médico CC" style="display:block;width:260px;max-width:75%;height:auto;margin:0 auto 8px;">
-        <h2 style="margin:0; font-size: 18pt; color:#102c50 !important; letter-spacing:.04em;">${titulo}</h2>
+      <div style="text-align: center; border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 15px;">
+        <img src="${window.location.origin}/assets/logo-consultorio-cc.svg?v=20261028" alt="Consultorio Médico CC" style="display:block;width:260px;max-width:75%;height:auto;margin:0 auto 8px;filter:grayscale(1) contrast(1.12);">
+        <h2 style="margin:0; font-size: 18pt; color:#111 !important; letter-spacing:.04em;">${titulo}</h2>
       </div>
 
       ${m ? `
