@@ -214,7 +214,8 @@ body {
   max-width: 224px;
   max-height: 88px;
   margin: 0 auto .6rem;
-  background: #10243A;
+  background: transparent;
+  object-fit: contain;
 }
 
 .brand-logo-login {
