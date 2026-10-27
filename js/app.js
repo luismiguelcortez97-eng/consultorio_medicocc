@@ -767,8 +767,23 @@ function openPacienteModal(id = null) {
 
     footer.innerHTML = `
       <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="savePaciente()">Guardar</button>
+      <button class="btn btn-primary" type="button" onclick="savePaciente()">Guardar</button>
     `;
+
+    // Mantener sincronizados el campo de fecha escrita y el calendario.
+    const fechaTexto = document.getElementById('p-fechaNac-text');
+    const fechaCalendario = document.getElementById('p-fechaNac-calendario');
+    fechaTexto.addEventListener('input', () => {
+      const iso = convertirFechaNacimientoAISO(fechaTexto.value);
+      if (iso) fechaCalendario.value = iso;
+      else if (!fechaTexto.value.trim()) fechaCalendario.value = '';
+    });
+    fechaCalendario.addEventListener('change', () => {
+      fechaTexto.value = fechaCalendario.value
+        ? formatearFechaNacimientoEntrada(fechaCalendario.value)
+        : '';
+      fechaTexto.setCustomValidity('');
+    });
   };
 
   load();
@@ -777,10 +792,26 @@ function openPacienteModal(id = null) {
 
 async function savePaciente() {
   const nombre = document.getElementById('p-nombre').value.trim();
+  const campoFechaTexto = document.getElementById('p-fechaNac-text');
+  const campoFechaCalendario = document.getElementById('p-fechaNac-calendario');
+  const fechaEscrita = campoFechaTexto.value.trim();
+  const fechaNac = fechaEscrita
+    ? convertirFechaNacimientoAISO(fechaEscrita)
+    : normalizarFechaNacimientoISO(campoFechaCalendario.value);
+
   if (!nombre) {
     alert('El nombre es obligatorio');
+    document.getElementById('p-nombre').focus();
     return;
   }
+
+  if (fechaEscrita && !fechaNac) {
+    campoFechaTexto.setCustomValidity('Fecha inválida. Usa DD/MM/AAAA con año de cuatro dígitos.');
+    campoFechaTexto.reportValidity();
+    campoFechaTexto.focus();
+    return;
+  }
+  campoFechaTexto.setCustomValidity('');
 
   const data = {
     nombre,
@@ -788,8 +819,16 @@ async function savePaciente() {
     genero: document.getElementById('p-genero').value,
     telefono: document.getElementById('p-telefono').value.trim(),
     direccion: document.getElementById('p-direccion').value.trim(),
-    medicoId: document.getElementById('p-medicoId').value ? parseInt(document.getElementById('p-medicoId').value) : null
+    medicoId: document.getElementById('p-medicoId').value
+      ? parseInt(document.getElementById('p-medicoId').value, 10)
+      : null
   };
+
+  const botonGuardar = document.querySelector('#modal-footer button[onclick="savePaciente()"]');
+  if (botonGuardar) {
+    botonGuardar.disabled = true;
+    botonGuardar.textContent = 'Guardando...';
+  }
 
   try {
     if (APP.editingId) {
@@ -799,9 +838,14 @@ async function savePaciente() {
       await DB.add(DB.STORES.pacientes, data);
     }
     closeModal();
-    renderPacientes();
+    await renderPacientes();
   } catch (err) {
-    alert('Error al guardar: ' + err.message);
+    alert('No se pudo guardar el paciente: ' + (err && err.message ? err.message : 'Error desconocido'));
+  } finally {
+    if (botonGuardar) {
+      botonGuardar.disabled = false;
+      botonGuardar.textContent = 'Guardar';
+    }
   }
 }
 
