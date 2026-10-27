@@ -1798,7 +1798,20 @@ async function saveMedicamento() {
       data.id = APP.editingId;
       await DB.put(DB.STORES.medicamentos, data);
     } else {
-      data.id = await DB.add(DB.STORES.medicamentos, data);
+      // DB.add devuelve el registro creado (incluido su id), no un id numérico aislado.
+      const creado = await DB.add(DB.STORES.medicamentos, data);
+      data.id = creado && typeof creado === 'object' ? creado.id : creado;
+      if (data.id == null || data.id === '' || !Number.isFinite(Number(data.id))) {
+        const catalogoActualizado = await DB.getAll(DB.STORES.medicamentos);
+        const normalizar = valor => String(valor || '').trim().toLocaleLowerCase('es-MX');
+        const encontrado = catalogoActualizado.find(m =>
+          normalizar(m.nombre) === normalizar(data.nombre) &&
+          normalizar(m.presentacion) === normalizar(data.presentacion) &&
+          normalizar(m.concentracion) === normalizar(data.concentracion)
+        );
+        if (!encontrado) throw new Error('El medicamento se guardó, pero no pude recuperar su identificador para seleccionarlo en la consulta.');
+        data.id = encontrado.id;
+      }
     }
     if (APP.regresarConsultaMedicamento) {
       const returnState = APP.regresarConsultaMedicamento;
