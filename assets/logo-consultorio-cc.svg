@@ -1,18 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 250" role="img" aria-labelledby="title desc">
-<title id="title">Consultorio Médico CC</title><desc id="desc">Logotipo médico elegante en azul marino con monograma CC y símbolo médico.</desc>
-<rect width="920" height="250" fill="#fff"/>
-<g transform="translate(22 18)" fill="none" stroke="#102c50" stroke-width="5">
-  <path d="M150 35 C105 2 40 25 27 78 C13 132 45 183 95 190 C119 194 139 187 155 174" stroke-linecap="round"/>
-  <path d="M170 56 C209 24 258 43 264 85 C271 126 242 161 207 164 C189 166 176 160 166 150" stroke="#6e89a7" stroke-width="4" stroke-linecap="round"/>
-  <path d="M148 35 C163 52 170 68 170 91 L170 151" stroke="#6e89a7" stroke-width="4"/>
-  <path d="M170 72 C183 56 198 60 203 74 C208 88 193 101 179 98 C169 96 164 88 170 72Z" fill="#6e89a7" stroke="none"/>
-  <path d="M171 96 C153 112 157 131 174 141 C191 151 197 167 184 181" stroke="#6e89a7" stroke-width="4" stroke-linecap="round"/>
-  <path d="M184 181 C174 197 183 211 198 211 C212 211 220 200 218 188" stroke="#6e89a7" stroke-width="4" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1536 512" role="img" aria-labelledby="t d">
+<title id="t">Consultorio Médico CC</title><desc id="d">Logotipo médico con monograma CC, bastón de Asclepio, tipografía elegante y pulso cardiaco.</desc>
+<rect width="1536" height="512" fill="#fff"/>
+<g fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M324 125 C264 83 183 126 174 210 C164 289 213 340 278 337 C309 335 330 319 347 299" stroke="#102b50" stroke-width="13"/>
+  <path d="M467 217 C432 193 388 208 365 238 C339 271 347 321 381 350 C415 380 461 367 491 341" stroke="#102b50" stroke-width="13"/>
+  <path d="M349 88 L349 354" stroke="#102b50" stroke-width="9"/>
+  <circle cx="349" cy="83" r="12" fill="#102b50" stroke="#102b50" stroke-width="5"/>
+  <path d="M348 139 C371 120 395 132 397 150 C399 169 379 181 362 176 C349 172 343 159 348 139Z" fill="#6d89a8" stroke="#6d89a8" stroke-width="3"/>
+  <path d="M357 171 C331 189 339 212 359 224 C379 236 382 257 360 275 C339 293 346 313 364 327 C382 340 381 361 365 378" stroke="#6d89a8" stroke-width="8"/>
+  <path d="M360 178 C383 193 385 208 363 224 C342 240 342 257 362 272 C384 288 383 306 362 323" stroke="#6d89a8" stroke-width="5"/>
 </g>
-<g fill="#102c50" font-family="Georgia,'Times New Roman',serif">
-  <text x="330" y="82" font-size="30" letter-spacing="10">CONSULTORIO</text>
-  <text x="328" y="157" font-size="69" letter-spacing="2">MÉDICO</text>
+<g fill="#102b50" font-family="Baskerville, 'Times New Roman', Georgia, serif" text-anchor="start">
+  <text x="545" y="178" font-size="67" letter-spacing="17">CONSULTORIO</text>
+  <text x="541" y="294" font-size="101" letter-spacing="3">MÉDICO</text>
 </g>
-<text x="635" y="159" fill="#102c50" font-family="cursive" font-style="italic" font-size="82">CC</text>
-<path d="M330 184 H520 L540 184 L552 165 L566 205 L582 174 L594 184 H865" fill="none" stroke="#6e89a7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1160" y="298" fill="#102b50" font-family="Baskerville, 'Times New Roman', Georgia, serif" font-style="italic" font-size="119" letter-spacing="-8">CC</text>
+<path d="M546 350 H845 L871 350 L893 326 L908 375 L929 342 L948 350 H1272" fill="none" stroke="#6d89a8" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
