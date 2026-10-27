@@ -4,8 +4,8 @@
    ===================================================== */
 
 :root {
-  --primary: #183657;
-  --primary-dark: #102743;
+  --primary: #203b5b;
+  --primary-dark: #172d47;
   --success: #198754;
   --danger: #dc3545;
   --warning: #ffc107;
@@ -235,9 +235,9 @@ body {
 }
 
 .nav-item.active {
-  background: rgba(13,110,253,0.15);
-  color: #6ea8fe;
-  border-left-color: var(--primary);
+  background: rgba(255,255,255,0.12);
+  color: #ffffff;
+  border-left-color: #a9c6e5;
 }
 
 .nav-item .icon {
@@ -583,31 +583,32 @@ textarea.form-control {
   }
 }
 
-/* ========== MODO NOCTURNO SUAVE: TONOS MATE Y CONTRASTE CÓMODO ========== */
+/* ========== TEMA CLARO ELEGANTE: REFERENCIA VISUAL CC ========== */
 body.tema-suave {
-  background: #252a31;
-  color: #d9dee5;
-  color-scheme: dark;
+  background: #f2f5f9;
+  color: #26364a;
+  color-scheme: light;
 }
-.tema-suave .main-content { background: #252a31; color: #d9dee5; }
+.tema-suave .main-content { background: #f2f5f9; color: #26364a; }
 .tema-suave .topbar {
-  background: #2b3139;
-  border-bottom-color: #424a55;
+  background: rgba(255,255,255,.97);
+  border-bottom-color: #e1e7ef;
 }
-.tema-suave .topbar h1 { color: #dfe4ea; }
-.tema-suave .content-area { color: #d9dee5; }
+.tema-suave .topbar h1 { color: #203b5b; }
+.tema-suave .content-area { color: #26364a; }
 .tema-suave .card,
 .tema-suave .stat-card,
 .tema-suave .modal {
-  background: #30363f;
-  color: #d9dee5;
-  border-color: #454e59;
+  background: #ffffff;
+  color: #26364a;
+  border: 1px solid #e5eaf1;
+  box-shadow: 0 5px 18px rgba(28,49,74,.055);
 }
 .tema-suave .card-header,
 .tema-suave th {
-  background: #363d47;
-  color: #dfe4ea;
-  border-color: #454e59;
+  background: #f7f9fc;
+  color: #203b5b;
+  border-color: #e3e9f1;
 }
 .tema-suave .card,
 .tema-suave .card-body,
@@ -616,55 +617,54 @@ body.tema-suave {
 .tema-suave .modal-header,
 .tema-suave .modal-body,
 .tema-suave .modal-footer {
-  border-color: #454e59;
+  border-color: #e3e9f1;
 }
-.tema-suave td { color: #d3dae2; }
-.tema-suave tr:hover { background: #39414c; }
+.tema-suave td { color: #34465b; }
+.tema-suave tr:hover { background: #f5f8fc; }
 .tema-suave .form-control,
 .tema-suave .form-select,
 .tema-suave textarea,
 .tema-suave select {
-  background: #292f37;
-  color: #dce2e9;
-  border-color: #525d6b;
+  background: #ffffff;
+  color: #26364a;
+  border-color: #d5deea;
 }
 .tema-suave .form-control:focus,
 .tema-suave .form-select:focus,
 .tema-suave textarea:focus,
 .tema-suave select:focus {
-  background: #2d343d;
-  color: #e3e8ee;
-  border-color: #7898b8;
-  box-shadow: 0 0 0 .18rem rgba(120,152,184,.16);
+  background: #ffffff;
+  color: #26364a;
+  border-color: #829fbe;
+  box-shadow: 0 0 0 .18rem rgba(65,105,145,.12);
 }
 .tema-suave .form-control::placeholder,
-.tema-suave textarea::placeholder { color: #aeb8c4; opacity: 1; }
+.tema-suave textarea::placeholder { color: #7c8b9d; opacity: 1; }
 .tema-suave .form-group label,
-.tema-suave .modal-header h3 { color: #d9dee5; }
-.tema-suave .text-muted { color: #b1bbc7 !important; }
+.tema-suave .modal-header h3 { color: #34465b; }
+.tema-suave .text-muted { color: #718096 !important; }
 .tema-suave .btn-outline {
-  color: #d2dbe5;
-  border-color: #657181;
+  color: #203b5b;
+  border-color: #cbd6e3;
 }
-.tema-suave .btn-outline:hover { background: #3b434e; color: #f0f3f7; }
-.tema-suave .empty-state { color: #bfc8d3; }
+.tema-suave .btn-outline:hover { background: #edf2f8; color: #172d47; }
+.tema-suave .empty-state { color: #718096; }
 .tema-suave .consultas-filtros {
-  background: #2b3139;
-  border-color: #454e59;
+  background: #ffffff;
+  border-color: #e3e9f1;
 }
 .tema-suave .configuracion-tema-control {
-  background: #363d47;
-  border-color: #4a5562;
+  background: #f7f9fc;
+  border-color: #e0e7f0;
 }
-.tema-suave .configuracion-tema-control small { color: #b1bbc7; }
+.tema-suave .configuracion-tema-control small { color: #718096; }
 .tema-suave .login-card {
-  background: #30363f;
-  color: #d9dee5;
-  border: 1px solid #454e59;
+  background: #ffffff;
+  color: #26364a;
+  border: 1px solid rgba(255,255,255,.9);
 }
-.tema-suave .login-card h1 { color: #8eb8df; }
-.tema-suave .login-card .subtitle { color: #b1bbc7; }
-
+.tema-suave .login-card h1 { color: #203b5b; }
+.tema-suave .login-card .subtitle { color: #718096; }
 
 /* Filtros de consultas */
 .consultas-filtros {
