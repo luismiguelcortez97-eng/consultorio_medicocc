@@ -11,9 +11,9 @@
   <path d="M360 178 C383 193 385 208 363 224 C342 240 342 257 362 272 C384 288 383 306 362 323" stroke="#b8cde2" stroke-width="5"/>
 </g>
 <g fill="#ffffff" font-family="Baskerville, 'Times New Roman', Georgia, serif" text-anchor="start">
-  <text x="545" y="178" font-size="67" letter-spacing="17">CONSULTORIO</text>
-  <text x="541" y="294" font-size="101" letter-spacing="3">MÉDICO</text>
+  <text x="545" y="178" font-size="82" letter-spacing="14">CONSULTORIO</text>
+  <text x="541" y="294" font-size="120" letter-spacing="2">MÉDICO</text>
 </g>
-<text x="1160" y="298" fill="#ffffff" font-family="Baskerville, 'Times New Roman', Georgia, serif" font-style="italic" font-size="119" letter-spacing="-8">CC</text>
+<text x="1160" y="298" fill="#ffffff" font-family="Baskerville, 'Times New Roman', Georgia, serif" font-style="italic" font-size="145" letter-spacing="-8">CC</text>
 <path d="M546 350 H845 L871 350 L893 326 L908 375 L929 342 L948 350 H1272" fill="none" stroke="#b8cde2" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
