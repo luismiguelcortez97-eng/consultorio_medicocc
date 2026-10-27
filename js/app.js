@@ -1304,11 +1304,7 @@ function addMedToConsulta() {
   if (!APP.tempConsulta) APP.tempConsulta = { medicamentos: [], estudios: [], estudiosImagen: [], signos: {} };
   if (!Array.isArray(APP.tempConsulta.medicamentos)) APP.tempConsulta.medicamentos = [];
   const meds = APP.tempConsulta.medicamentos;
-  if (meds.some(m => String(m.medicamentoId) === String(id))) {
-    alert('Este medicamento ya está agregado. Busca y selecciona otro medicamento.');
-    if (search) { search.focus(); search.select(); }
-    return;
-  }
+  // Se permite repetir un medicamento cuando se necesita registrarlo con indicaciones distintas.
   meds.push({
     medicamentoId: Number.parseInt(id, 10),
     dosis: document.getElementById('add-med-dosis').value.trim() || '—',
@@ -1336,19 +1332,29 @@ async function renderTempMeds() {
   const list = document.getElementById('meds-list');
   if (!list) return;
   const allMeds = await DB.getAll(DB.STORES.medicamentos);
-  if (APP.tempConsulta.medicamentos.length === 0) {
+  const items = Array.isArray(APP.tempConsulta?.medicamentos) ? APP.tempConsulta.medicamentos : [];
+  if (items.length === 0) {
     list.innerHTML = '<p class="text-muted" style="font-size:0.9rem;">Ningún medicamento agregado.</p>';
     return;
   }
-  list.innerHTML = `<ul style="list-style:none; padding:0;">
-    ${APP.tempConsulta.medicamentos.map((m, i) => {
-      const med = allMeds.find(x => x.id === m.medicamentoId);
-      return `<li style="padding:0.4rem 0; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center;">
-        <span><strong>${med ? escapeHtml(med.nombre) : '—'}</strong> ${m.dosis} · ${m.via} · ${m.frecuencia} · ${m.duracion}</span>
-        <button class="btn btn-danger btn-sm" onclick="removeMedFromConsulta(${i})">×</button>
-      </li>`;
+  list.innerHTML = `<div class="consulta-medicamentos-list">
+    ${items.map((m, i) => {
+      const med = allMeds.find(x => String(x.id) === String(m.medicamentoId));
+      const nombre = med ? escapeHtml(med.nombre || '') : 'Medicamento no encontrado en catálogo';
+      return `<div class="consulta-medicamento-item" style="display:block;padding:.7rem .8rem;margin:.45rem 0;border:1px solid #d9e1e8;border-radius:8px;background:var(--card-bg, #fff);">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.75rem;">
+          <strong style="overflow-wrap:anywhere;">${nombre}</strong>
+          <button type="button" class="btn btn-danger btn-sm" aria-label="Quitar ${nombre}" onclick="removeMedFromConsulta(${i})">Quitar</button>
+        </div>
+        <div style="margin-top:.35rem;line-height:1.6;overflow-wrap:anywhere;">
+          <div><strong>Dosis:</strong> ${escapeHtml(m.dosis || '—')}</div>
+          <div><strong>Vía:</strong> ${escapeHtml(m.via || '—')}</div>
+          <div><strong>Frecuencia:</strong> ${escapeHtml(m.frecuencia || '—')}</div>
+          <div><strong>Duración:</strong> ${escapeHtml(m.duracion || '—')}</div>
+        </div>
+      </div>`;
     }).join('')}
-  </ul>`;
+  </div>`;
 }
 
 async function addEstToConsulta() {
