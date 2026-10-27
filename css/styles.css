@@ -583,32 +583,32 @@ textarea.form-control {
   }
 }
 
-/* ========== TEMA CLARO ELEGANTE: REFERENCIA VISUAL CC ========== */
+/* ========== MODO NOCTURNO SUAVE: TONOS MATE Y CONTRASTE CÓMODO ========== */
 body.tema-suave {
-  background: #f2f5f9;
-  color: #26364a;
-  color-scheme: light;
+  background: #202833;
+  color: #dce3eb;
+  color-scheme: dark;
 }
-.tema-suave .main-content { background: #f2f5f9; color: #26364a; }
+.tema-suave .main-content { background: #202833; color: #dce3eb; }
 .tema-suave .topbar {
-  background: rgba(255,255,255,.97);
-  border-bottom-color: #e1e7ef;
+  background: #263241;
+  border-bottom-color: #3b4858;
 }
-.tema-suave .topbar h1 { color: #203b5b; }
-.tema-suave .content-area { color: #26364a; }
+.tema-suave .topbar h1 { color: #e5ebf2; }
+.tema-suave .content-area { color: #dce3eb; }
 .tema-suave .card,
 .tema-suave .stat-card,
 .tema-suave .modal {
-  background: #ffffff;
-  color: #26364a;
-  border: 1px solid #e5eaf1;
-  box-shadow: 0 5px 18px rgba(28,49,74,.055);
+  background: #2a3543;
+  color: #dce3eb;
+  border: 1px solid #3d4b5c;
+  box-shadow: 0 5px 18px rgba(0,0,0,.12);
 }
 .tema-suave .card-header,
 .tema-suave th {
-  background: #f7f9fc;
-  color: #203b5b;
-  border-color: #e3e9f1;
+  background: #303e4e;
+  color: #e5ebf2;
+  border-color: #3d4b5c;
 }
 .tema-suave .card,
 .tema-suave .card-body,
@@ -617,54 +617,54 @@ body.tema-suave {
 .tema-suave .modal-header,
 .tema-suave .modal-body,
 .tema-suave .modal-footer {
-  border-color: #e3e9f1;
+  border-color: #3d4b5c;
 }
-.tema-suave td { color: #34465b; }
-.tema-suave tr:hover { background: #f5f8fc; }
+.tema-suave td { color: #d2dbe5; }
+.tema-suave tr:hover { background: #354253; }
 .tema-suave .form-control,
 .tema-suave .form-select,
 .tema-suave textarea,
 .tema-suave select {
-  background: #ffffff;
-  color: #26364a;
-  border-color: #d5deea;
+  background: #222d3a;
+  color: #e0e7ef;
+  border-color: #4a5a6d;
 }
 .tema-suave .form-control:focus,
 .tema-suave .form-select:focus,
 .tema-suave textarea:focus,
 .tema-suave select:focus {
-  background: #ffffff;
-  color: #26364a;
+  background: #263342;
+  color: #e8eef5;
   border-color: #829fbe;
-  box-shadow: 0 0 0 .18rem rgba(65,105,145,.12);
+  box-shadow: 0 0 0 .18rem rgba(130,159,190,.16);
 }
 .tema-suave .form-control::placeholder,
-.tema-suave textarea::placeholder { color: #7c8b9d; opacity: 1; }
+.tema-suave textarea::placeholder { color: #aeb9c7; opacity: 1; }
 .tema-suave .form-group label,
-.tema-suave .modal-header h3 { color: #34465b; }
-.tema-suave .text-muted { color: #718096 !important; }
+.tema-suave .modal-header h3 { color: #dce3eb; }
+.tema-suave .text-muted { color: #b0bdcb !important; }
 .tema-suave .btn-outline {
-  color: #203b5b;
-  border-color: #cbd6e3;
+  color: #dce6f0;
+  border-color: #65768a;
 }
-.tema-suave .btn-outline:hover { background: #edf2f8; color: #172d47; }
-.tema-suave .empty-state { color: #718096; }
+.tema-suave .btn-outline:hover { background: #3a495b; color: #ffffff; }
+.tema-suave .empty-state { color: #bdc8d5; }
 .tema-suave .consultas-filtros {
-  background: #ffffff;
-  border-color: #e3e9f1;
+  background: #263241;
+  border-color: #3d4b5c;
 }
 .tema-suave .configuracion-tema-control {
-  background: #f7f9fc;
-  border-color: #e0e7f0;
+  background: #303e4e;
+  border-color: #46576a;
 }
-.tema-suave .configuracion-tema-control small { color: #718096; }
+.tema-suave .configuracion-tema-control small { color: #b0bdcb; }
 .tema-suave .login-card {
-  background: #ffffff;
-  color: #26364a;
-  border: 1px solid rgba(255,255,255,.9);
+  background: #2a3543;
+  color: #dce3eb;
+  border: 1px solid #3d4b5c;
 }
-.tema-suave .login-card h1 { color: #203b5b; }
-.tema-suave .login-card .subtitle { color: #718096; }
+.tema-suave .login-card h1 { color: #dce6f0; }
+.tema-suave .login-card .subtitle { color: #b0bdcb; }
 
 /* Filtros de consultas */
 .consultas-filtros {
