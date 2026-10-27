@@ -2607,7 +2607,7 @@ async function imprimirReceta(consultaId, plantillaId = 'default') {
   printArea.innerHTML = `
     <style>
       @page { size: letter; margin: ${plantilla && plantilla.fondoImagen ? '0' : '10mm'}; }
-      #print-area .rx-consulta-print { font-family: "Times New Roman", serif; color: #000 !important; font-size: 10pt; line-height: 1.18; max-width: ${plantilla && plantilla.fondoImagen ? '216mm' : '190mm'}; min-height: ${plantilla && plantilla.fondoImagen ? '279mm' : 'auto'}; margin: 0 auto; position: relative; ${plantilla && plantilla.fondoImagen ? 'background-image:url(' + JSON.stringify(plantilla.fondoImagen) + ');background-size:100% 100%;background-repeat:no-repeat;padding:' + Number(plantilla.margenSuperior || 10) + 'mm 10mm 10mm ' + Number(plantilla.margenIzquierdo || 10) + 'mm;-webkit-print-color-adjust:exact;print-color-adjust:exact;' : ''} }
+      #print-area .rx-consulta-print { font-family: Arial, Helvetica, sans-serif; color: #000 !important; font-size: 10pt; line-height: 1.18; max-width: ${plantilla && plantilla.fondoImagen ? '216mm' : '190mm'}; min-height: ${plantilla && plantilla.fondoImagen ? '279mm' : 'auto'}; margin: 0 auto; position: relative; ${plantilla && plantilla.fondoImagen ? 'background-image:url(' + JSON.stringify(plantilla.fondoImagen) + ');background-size:100% 100%;background-repeat:no-repeat;padding:' + Number(plantilla.margenSuperior || 10) + 'mm 10mm 10mm ' + Number(plantilla.margenIzquierdo || 10) + 'mm;-webkit-print-color-adjust:exact;print-color-adjust:exact;' : ''} }
       #print-area .rx-consulta-print * { color: #000 !important; box-sizing: border-box; }
       #print-area .rx-consulta-print h2 { font-size: 15pt; }
       #print-area .rx-consulta-print h3 { font-size: 11pt; margin: 8px 0 4px !important; break-after: avoid; page-break-after: avoid; }
@@ -2618,7 +2618,7 @@ async function imprimirReceta(consultaId, plantillaId = 'default') {
       #print-area .rx-consulta-print .rx-signature-line { border-top: 1px solid #000; width: 220px; max-width: 75%; margin: 0 auto 4px; padding-top: 4px; }
       @media print { #print-area .rx-consulta-print { max-width: none; margin: 0; } }
     </style>
-    <div class="rx-consulta-print" style="font-family: 'Times New Roman', serif; max-width: ${plantilla && plantilla.fondoImagen ? '216mm' : '800px'}; margin: 0 auto;">
+    <div class="rx-consulta-print" style="font-family: Arial, Helvetica, sans-serif; max-width: ${plantilla && plantilla.fondoImagen ? '216mm' : '800px'}; margin: 0 auto;">
       <div style="border-bottom:1px solid #333; padding:0 0 12px; margin-bottom:14px; color:#111;">
         <div style="display:flex; align-items:center; justify-content:space-between; gap:18px; min-height:76px;">
           <div style="flex:1 1 58%; min-width:0; text-align:left;">
