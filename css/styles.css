@@ -187,17 +187,41 @@ body {
   left: 0;
   width: var(--sidebar-width);
   height: 100vh;
-  background: linear-gradient(180deg, #173451 0%, #102943 100%);
-  color: #e9ecef;
+  background: #10243A;
+  color: #e9eef5;
   display: flex;
   flex-direction: column;
   z-index: 1000;
   transition: transform 0.3s;
+  box-shadow: 4px 0 18px rgba(16,36,58,.08);
 }
 
 .sidebar-header {
-  padding: 1.25rem 1.5rem;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
+  padding: 1.1rem 1rem 1rem;
+  background: #10243A;
+  border-bottom: 1px solid rgba(220,232,245,.14);
+  text-align: center;
+}
+
+.brand-logo {
+  display: block;
+  height: auto;
+  object-fit: contain;
+}
+
+.brand-logo-sidebar {
+  width: 100%;
+  max-width: 224px;
+  max-height: 88px;
+  margin: 0 auto .6rem;
+  background: #10243A;
+}
+
+.brand-logo-login {
+  width: min(100%, 330px);
+  max-height: 120px;
+  margin: 0 auto 1rem;
+  object-fit: contain;
 }
 
 .sidebar-header h2 {
@@ -207,8 +231,9 @@ body {
 }
 
 .sidebar-header small {
-  color: #adb5bd;
-  font-size: 0.8rem;
+  color: #b9c7d8;
+  font-size: 0.78rem;
+  letter-spacing: .04em;
 }
 
 .sidebar-nav {
@@ -222,22 +247,23 @@ body {
   align-items: center;
   gap: 0.75rem;
   padding: 0.75rem 1.5rem;
-  color: #adb5bd;
+  color: #c0ccda;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease;
   border-left: 3px solid transparent;
-  font-size: 0.95rem;
+  font-size: 0.93rem;
 }
 
 .nav-item:hover {
-  background: rgba(255,255,255,0.05);
-  color: white;
+  background: #1a3450;
+  color: #ffffff;
 }
 
 .nav-item.active {
-  background: rgba(255,255,255,0.12);
+  background: #1c3855;
   color: #ffffff;
   border-left-color: #a9c6e5;
+  font-weight: 600;
 }
 
 .nav-item .icon {
