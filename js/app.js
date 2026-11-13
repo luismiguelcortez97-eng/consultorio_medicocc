@@ -3829,9 +3829,9 @@ async function renderContador() {
 }
 function renderContadorPanel(data, view = 'inicio') {
   const area = document.getElementById('content-area');
-  const records = data.records || [], cobros = (data.cobros || []).filter(c => c.status === 'pagado');
+  const records = data.records || [], cobros = (data.cobros || []).filter(c => c.status === 'pagado' && c.tipo === 'medico' && c.consultaId != null);
   const settings = data.settings || {}, capital = data.capital || {};
-  const expenses = records.filter(r => ['expense','electricity_bill','payroll_payment','admin_salary_payment','cash_out'].includes(r.type) && !r.reversedAt);
+  const expenses = records.filter(r => ['expense','electricity_bill','payroll_payment','admin_salary_payment','cash_out','cash_movement'].includes(r.type) && !r.reversedAt);
   const expenseTotal = expenses.reduce((s,r)=>s+(Number(r.data?.amount)||0),0);
   const reserved = Number(capital.reserved)||0, free = Number(capital.free)||0;
   const accountRecords = records.filter(r=>r.type==='account'&&!r.reversedAt);
