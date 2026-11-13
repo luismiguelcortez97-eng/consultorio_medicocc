@@ -458,6 +458,50 @@ function registerContadorRoutes(app, pool, helpers) {
     } finally { client.release(); }
   });
 
+  app.post('/api/contador/cobros/confirmar', financeAccess, async (req, res, next) => {
+    const id = Number(req.body?.id);
+    const amount = Number(req.body?.amount);
+    const method = typeof req.body?.method === 'string' ? req.body.method.trim() : '';
+    const allowedMethods = new Set(['Efectivo', 'Tarjeta', 'Transferencia']);
+    if (!Number.isSafeInteger(id) || id < 1 || !Number.isFinite(amount) || amount <= 0 || amount > 10000000 || !allowedMethods.has(method)) {
+      return res.status(400).json({ error: 'Verifica el importe recibido y selecciona un método de pago válido.' });
+    }
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query("SELECT pg_advisory_xact_lock(hashtext('consultorio_contador_cobros'))");
+      const found = await client.query("SELECT data FROM app_records WHERE store='cobros' AND record_key=$1 FOR UPDATE", [String(id)]);
+      if (!found.rowCount) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'No se encontró el cobro.' });
+      }
+      const cobro = found.rows[0].data || {};
+      if (cobro.status !== 'pendiente') {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: cobro.status === 'cancelado' ? 'Este cobro fue anulado y no puede confirmarse.' : 'Este cobro ya fue confirmado o no está pendiente.' });
+      }
+      const now = new Date().toISOString();
+      const user = req.session?.displayName || req.session?.username || 'Contador';
+      const requestedAmount = Number(cobro.monto) || 0;
+      cobro.montoSolicitado = cobro.montoSolicitado == null ? requestedAmount : cobro.montoSolicitado;
+      cobro.monto = Math.round(amount * 100) / 100;
+      cobro.montoRecibido = cobro.monto;
+      cobro.metodoPago = method;
+      cobro.status = 'pagado';
+      cobro.cobradoAt = now;
+      cobro.pagadoAt = now;
+      cobro.pagadoPor = user;
+      cobro.audit = Array.isArray(cobro.audit) ? cobro.audit : [];
+      cobro.audit.push({ fecha: now, accion: 'cobro_confirmado_por_contador', usuario: user, montoSolicitado: requestedAmount, montoRecibido: cobro.monto, metodoPago: method });
+      await client.query("UPDATE app_records SET data=$2, updated_at=NOW() WHERE store='cobros' AND record_key=$1", [String(id), cobro]);
+      await client.query('COMMIT');
+      res.json({ ok: true, cobro });
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      next(error);
+    } finally { client.release(); }
+  });
+
   app.post('/api/contador/cobros/anular', financeAccess, async (req, res, next) => {
     const kind = req.body?.kind === 'cobro' ? 'cobro' : req.body?.kind === 'consulta' ? 'consulta' : '';
     const id = Number(req.body?.id);
