@@ -74,7 +74,7 @@ function registerContadorRoutes(app, pool, helpers) {
 
   async function getPaidIncome(client = pool) {
     const result = await client.query("SELECT data FROM app_records WHERE store='cobros'");
-    return result.rows.map(row => row.data).filter(c => c && c.status === 'pagado');
+    return result.rows.map(row => row.data).filter(c => c && c.status === 'pagado' && c.tipo === 'medico' && c.consultaId != null);
   }
 
   async function getFreeCapital(client = pool) {
