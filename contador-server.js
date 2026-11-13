@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
 
 function hashNip(nip, salt = crypto.randomBytes(16).toString('hex')) {
   return { salt, hash: crypto.scryptSync(nip, salt, 64).toString('hex') };
@@ -48,6 +49,7 @@ async function initContadorDb(pool) {
 
 function registerContadorRoutes(app, pool, helpers) {
   const { requireAuth, requireAdmin, createFinanceToken, validFinanceToken, isProd } = helpers;
+  const contadorUnlockLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 5, standardHeaders: true, legacyHeaders: false, message: { error: 'Demasiados intentos de clave. Intenta más tarde.' } });
   const financeAccess = (req, res, next) => {
     requireAuth(req, res, () => requireAdmin(req, res, () => {
       if (!validFinanceToken(req, 'contador')) {
@@ -148,7 +150,7 @@ function registerContadorRoutes(app, pool, helpers) {
     } catch (error) { next(error); }
   });
 
-  app.post('/api/contador/unlock', requireAuth, requireAdmin, async (req, res, next) => {
+  app.post('/api/contador/unlock', contadorUnlockLimiter, requireAuth, requireAdmin, async (req, res, next) => {
     try {
       if (!(await checkNip(req.body?.nip))) return res.status(403).json({ error: 'Clave del Contador incorrecta.' });
       res.cookie('cmcc_finance_contador', createFinanceToken('contador'), {
@@ -195,9 +197,26 @@ function registerContadorRoutes(app, pool, helpers) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+      if (['expense', 'electricity_bill', 'reserve', 'admin_salary_payment', 'payroll_payment', 'cash_movement'].includes(body.type)) {
+        await client.query("SELECT pg_advisory_xact_lock(hashtext('consultorio_contador_ledger'))");
+      }
       if (requiresNip && !(await checkNip(body.authorizationNip))) {
         await client.query('ROLLBACK');
         return res.status(403).json({ error: 'Se requiere la autorización del Contador. La clave no es correcta.' });
+      }
+      if (body.type === 'payroll_payment') {
+        const attendanceId = Number(body.data?.attendanceId);
+        if (!Number.isSafeInteger(attendanceId) || attendanceId < 1) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'Selecciona un registro de nómina válido.' });
+        }
+        const attendance = await client.query("SELECT data FROM contador_records WHERE id=$1 AND record_type='attendance' AND reversed_at IS NULL", [attendanceId]);
+        const alreadyPaid = await client.query("SELECT id FROM contador_records WHERE record_type='payroll_payment' AND data->>'attendanceId'=$1 AND reversed_at IS NULL", [String(attendanceId)]);
+        if (!attendance.rowCount || alreadyPaid.rowCount || amount !== Number(attendance.rows[0].data?.amount)) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({ error: 'La nómina no existe, ya fue pagada o el importe no coincide.' });
+        }
+        cleanPayroll = { ...body.data, employeeName: attendance.rows[0].data?.employeeName, attendanceId, amount };
       }
       if (['expense', 'electricity_bill', 'reserve', 'admin_salary_payment', 'payroll_payment', 'cash_movement'].includes(body.type) && amount > 0) {
         const capital = await getFreeCapital(client);
@@ -213,7 +232,7 @@ function registerContadorRoutes(app, pool, helpers) {
           return res.status(409).json({ error: 'No se puede reservar más que el capital libre disponible.' });
         }
       }
-      const cleanData = { ...body.data, amount: amount == null ? undefined : amount };
+      const cleanData = { ...(typeof cleanPayroll !== 'undefined' ? cleanPayroll : body.data), amount: amount == null ? undefined : amount };
       delete cleanData.authorizationNip;
       const result = await client.query(
         'INSERT INTO contador_records(record_type,data,created_by) VALUES($1,$2,$3) RETURNING id,record_type AS type,data,created_by AS "createdBy",created_at AS "createdAt"',
