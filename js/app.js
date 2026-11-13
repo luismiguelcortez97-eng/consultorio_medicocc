@@ -3841,16 +3841,17 @@ function renderContadorPanel(data, view = 'inicio') {
     if(name==='Electrónico') total += cobros.filter(c=>c.metodoPago==='Tarjeta').reduce((s,c)=>s+(Number(c.monto)||0),0);
      if(name==='Transferencias por asignar') total += cobros.filter(c=>c.metodoPago==='Transferencia').reduce((s,c)=>s+(Number(c.monto)||0),0);
     records.filter(r=>!r.reversedAt).forEach(r=>{
-      if(r.data?.account!==name) return;
       const amount=Number(r.data?.amount)||0;
-      if(r.type==='cash_movement') total += r.data?.direction==='out' ? -amount : amount;
-      else if(['expense','electricity_bill','payroll_payment','admin_salary_payment','salary_payment'].includes(r.type)) total -= amount;
-      else if(r.type==='reversal') {
+      if(r.type==='reversal') {
         if(r.data?.originalAccount!==name) return;
         if(r.data?.originalType==='cash_movement') total += r.data?.originalDirection==='out' ? amount : -amount;
         else if(['expense','electricity_bill','payroll_payment','admin_salary_payment','salary_payment'].includes(r.data?.originalType)) total += amount;
+        return;
       }
-    });
+      if(r.data?.account!==name) return;
+      if(r.type==='cash_movement') total += r.data?.direction==='out' ? -amount : amount;
+      else if(['expense','electricity_bill','payroll_payment','admin_salary_payment','salary_payment'].includes(r.type)) total -= amount;
+    });;
     return total;
   };
   const incomeTotal = cobros.reduce((s,c)=>s+(Number(c.monto)||0),0);
