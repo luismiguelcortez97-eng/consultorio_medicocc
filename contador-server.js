@@ -88,7 +88,7 @@ function registerContadorRoutes(app, pool, helpers) {
     let reserved = 0;
     for (const row of expenses.rows) {
       const amount = Number(row.data?.amount) || 0;
-      if (row.record_type === 'expense' || row.record_type === 'payroll_payment' || row.record_type === 'admin_salary_payment' || row.record_type === 'cash_out') spent += amount;
+      if (row.record_type === 'expense' || row.record_type === 'electricity_bill' || row.record_type === 'payroll_payment' || row.record_type === 'admin_salary_payment' || row.record_type === 'cash_out') spent += amount;
       if (row.record_type === 'reserve') reserved += amount;
       if (row.record_type === 'reversal') {
         const originalType = row.data?.originalType;
