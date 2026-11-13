@@ -195,6 +195,7 @@ function registerContadorRoutes(app, pool, helpers) {
     const requiresNip = ['expense', 'electricity_bill', 'reserve', 'admin_salary_payment', 'payroll_payment'].includes(body.type) ||
       (body.type === 'cash_movement' && body.data?.direction === 'out');
     const client = await pool.connect();
+    let cleanPayroll = body.data || {};
     try {
       await client.query('BEGIN');
       if (['expense', 'electricity_bill', 'reserve', 'admin_salary_payment', 'payroll_payment', 'cash_movement'].includes(body.type)) {
