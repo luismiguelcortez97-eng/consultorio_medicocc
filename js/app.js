@@ -3831,7 +3831,7 @@ function renderContadorPanel(data, view = 'inicio') {
   const area = document.getElementById('content-area');
   const records = data.records || [], cobros = (data.cobros || []).filter(c => c.status === 'pagado' && c.tipo === 'medico');
   const settings = data.settings || {}, capital = data.capital || {};
-  const expenses = records.filter(r => (['expense','electricity_bill','payroll_payment','admin_salary_payment','cash_out'].includes(r.type) || r.type==='cash_movement' && r.data?.direction==='out') && !r.reversedAt);
+  const expenses = records.filter(r => (['expense','electricity_bill','payroll_payment','admin_salary_payment','salary_payment','cash_out'].includes(r.type) || r.type==='cash_movement' && r.data?.direction==='out') && !r.reversedAt);
   const expenseTotal = expenses.reduce((s,r)=>s+(Number(r.data?.amount)||0),0);
   const reserved = Number(capital.reserved)||0, free = Number(capital.free)||0;
   const accountRecords = records.filter(r=>r.type==='account'&&!r.reversedAt);
@@ -3844,11 +3844,11 @@ function renderContadorPanel(data, view = 'inicio') {
       if(r.data?.account!==name) return;
       const amount=Number(r.data?.amount)||0;
       if(r.type==='cash_movement') total += r.data?.direction==='out' ? -amount : amount;
-      else if(['expense','electricity_bill','payroll_payment','admin_salary_payment'].includes(r.type)) total -= amount;
+      else if(['expense','electricity_bill','payroll_payment','admin_salary_payment','salary_payment'].includes(r.type)) total -= amount;
       else if(r.type==='reversal') {
         if(r.data?.originalAccount!==name) return;
         if(r.data?.originalType==='cash_movement') total += r.data?.originalDirection==='out' ? amount : -amount;
-        else if(['expense','electricity_bill','payroll_payment','admin_salary_payment'].includes(r.data?.originalType)) total += amount;
+        else if(['expense','electricity_bill','payroll_payment','admin_salary_payment','salary_payment'].includes(r.data?.originalType)) total += amount;
       }
     });
     return total;
@@ -3880,7 +3880,7 @@ function renderContadorPanel(data, view = 'inicio') {
   const paidSalary = new Set(records.filter(r=>r.type==='salary_payment' && !r.reversedAt).map(r=>String(r.data?.accrualId)));
   const salaryRows = records.filter(r=>r.type==='salary_accrual' && !r.reversedAt).map(r=>'<tr><td>'+contadorEscape(r.data?.weekStart||'—')+'</td><td>'+contadorMoney(r.data?.accountantAmount)+'</td><td>'+contadorMoney(r.data?.adminAmount)+'</td><td>'+contadorMoney(r.data?.amount)+'</td><td>'+(paidSalary.has(String(r.id))?'<span class="badge badge-success">Retirado</span>':'<button class="btn btn-primary btn-sm" data-salary-id="'+Number(r.id)+'" '+(!['14','30'].includes(today.slice(8,10))?'disabled title="Disponible los días 14 y 30"':'')+'>Retirar con autorización</button>')+'</td></tr>').join('');
   const payrollRows = records.filter(r=>r.type==='attendance' && !r.reversedAt).map(r=>'<tr><td>'+new Date(r.createdAt).toLocaleDateString('es-MX')+'</td><td>'+contadorEscape(r.data?.employeeName||'—')+'</td><td>'+contadorEscape(r.data?.hours||'—')+'</td><td>'+contadorMoney(r.data?.amount)+'</td><td>'+(paidAttendance.has(String(r.id))?'<span class="badge badge-success">Pagado</span>':'<button class="btn btn-primary btn-sm" data-payroll-id="'+Number(r.id)+'">Pagar con autorización</button>')+'</td></tr>').join('');
-  const recordRows = records.filter(r=>!r.reversedAt).map(r=>'<tr><td>'+new Date(r.createdAt).toLocaleString('es-MX')+'</td><td>'+contadorEscape(r.data?.concept||r.type)+'</td><td>'+contadorEscape(r.data?.category||r.type)+'</td><td>'+contadorMoney(r.data?.amount)+'</td><td>'+contadorEscape(r.createdBy)+'</td><td>'+(r.type==='reserve'?'Reservado':r.type==='expense'||r.type==='electricity_bill'||r.type==='payroll_payment'||r.type==='admin_salary_payment'?'Registrado':'Activo')+'</td></tr>').join('');
+  const recordRows = records.filter(r=>!r.reversedAt).map(r=>'<tr><td>'+new Date(r.createdAt).toLocaleString('es-MX')+'</td><td>'+contadorEscape(r.data?.concept||r.type)+'</td><td>'+contadorEscape(r.data?.category||r.type)+'</td><td>'+contadorMoney(r.data?.amount)+'</td><td>'+contadorEscape(r.createdBy)+'</td><td>'+(r.type==='reserve'?'Reservado':r.type==='expense'||r.type==='electricity_bill'||r.type==='payroll_payment'||r.type==='admin_salary_payment'||r.type==='salary_payment'?'Registrado':'Activo')+'</td></tr>').join('');
   const viewHtml = view==='inicio' ? `
     <div class="stats-grid">
       <div class="stat-card"><div class="stat-icon green">💵</div><div class="stat-info"><h4>${contadorMoney(daily)}</h4><p>Ingreso diario</p></div></div>
@@ -3918,7 +3918,7 @@ function renderContadorPanel(data, view = 'inicio') {
   area.innerHTML = '<div class="d-flex gap-2 flex-wrap mb-3">'+buttonHtml+'</div>'+viewHtml;
   area.querySelectorAll('[data-contador-view]').forEach(btn=>btn.addEventListener('click',()=>renderContadorPanel(data,btn.dataset.contadorView)));
   area.querySelector('[data-contador-refresh]')?.addEventListener('click',renderContador);
-  area.querySelectorAll('[data-salary-id]').forEach(btn=>btn.addEventListener('click',async()=>{const accrual=records.find(r=>String(r.id)===btn.dataset.salaryId);if(!accrual)return;await contadorSubmitRecord('salary_payment',{accrualId:accrual.id,amount:Number(accrual.data?.amount)||0},'Autorizar retiro de salarios','',true);}));
+  area.querySelectorAll('[data-salary-id]').forEach(btn=>btn.addEventListener('click',async()=>{const accrual=records.find(r=>String(r.id)===btn.dataset.salaryId);if(!accrual)return;const options=['Efectivo','Electrónico',...accountRecords.map(r=>r.data?.name).filter(Boolean)];const account=window.prompt('¿De qué caja o cuenta saldrá el retiro?\\n'+options.join(' / '),'Efectivo');if(account===null)return;if(!options.includes(account)){alert('Selecciona una caja o cuenta registrada.');return;}await contadorSubmitRecord('salary_payment',{accrualId:accrual.id,amount:Number(accrual.data?.amount)||0,account},'Autorizar retiro de salarios','',true);}));
    area.querySelector('#contador-accrue-salaries')?.addEventListener('click',async()=>{const d=new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()-((d.getDay()+6)%7));const weekStart=contadorLocalDate(d);await contadorSubmitRecord('salary_accrual',{weekStart},'Autorizar cálculo y apartado de salarios semanales','cs-status',true);});
    area.querySelectorAll('[data-payroll-id]').forEach(btn=>btn.addEventListener('click',async()=>{const attendance=records.find(r=>String(r.id)===btn.dataset.payrollId);if(!attendance)return;await contadorSubmitRecord('payroll_payment',{attendanceId:attendance.id,amount:Number(attendance.data?.amount)||0,employeeId:attendance.data?.employeeId,employeeName:attendance.data?.employeeName,concept:'Pago semanal de nómina'},'Autorizar pago de nómina','',true);}));
   area.querySelector('[data-contador-rent]')?.addEventListener('click',()=>{const concept='Renta '+today.slice(0,7);if(records.some(r=>r.type==='expense'&&!r.reversedAt&&r.data?.concept===concept)){alert('La renta de este mes ya fue registrada.');return;}const amount=Number(settings.rentMonthly)||0;if(amount<=0){alert('Configura primero el importe de renta en Configuración.');return;}contadorSubmitRecord('expense',{concept,category:'Renta',amount,date:today,account:'Efectivo'},'Autorizar registro de renta','');});
