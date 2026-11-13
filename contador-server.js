@@ -205,6 +205,39 @@ function registerContadorRoutes(app, pool, helpers) {
         await client.query('ROLLBACK');
         return res.status(403).json({ error: 'Se requiere la autorización del Contador. La clave no es correcta.' });
       }
+      if (body.type === 'attendance') {
+        const hours = Number(body.data?.hours);
+        const employeeId = Number(body.data?.employeeId);
+        const weekStart = typeof body.data?.weekStart === 'string' ? body.data.weekStart : '';
+        if (!Number.isSafeInteger(employeeId) || employeeId < 1 || !Number.isFinite(hours) || hours < 0 || hours > 48 || !/^\\d{4}-\\d{2}-\\d{2}$/.test(weekStart)) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'Empleado, semana u horas laboradas no válidos.' });
+        }
+        const weekDate = new Date(weekStart + 'T12:00:00Z');
+        if (Number.isNaN(weekDate.getTime()) || weekDate.getUTCDay() !== 1 || weekDate.toISOString().slice(0,10) !== weekStart) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'La semana debe iniciar en lunes.' });
+        }
+        const employee = await client.query("SELECT data FROM app_records WHERE store='empleados' AND data->>'id'=$1", [String(employeeId)]);
+        if (!employee.rowCount) {
+          await client.query('ROLLBACK');
+          return res.status(404).json({ error: 'El empleado seleccionado no existe.' });
+        }
+        const duplicate = await client.query("SELECT id FROM contador_records WHERE record_type='attendance' AND reversed_at IS NULL AND data->>'employeeId'=$1 AND data->>'weekStart'=$2", [String(employeeId), weekStart]);
+        if (duplicate.rowCount) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({ error: 'Ya existe un cálculo de nómina para ese empleado y semana.' });
+        }
+        const settingsResult = await client.query("SELECT setting_value FROM contador_settings WHERE setting_key='general'");
+        const settings = settingsResult.rows[0]?.setting_value || {};
+        const dailyRate = Number(settings.salarioBaseDiario) || 440;
+        const expected = Math.round(hours * dailyRate / 8 * 100) / 100;
+        if (amount !== expected) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'El importe de nómina no coincide con las horas registradas y la tarifa configurada.' });
+        }
+        cleanPayroll = { ...body.data, employeeId, employeeName: employee.rows[0].data?.nombre || employee.rows[0].data?.name || 'Empleado', hours, weekStart, amount: expected };
+      }
       if (body.type === 'payroll_payment') {
         const attendanceId = Number(body.data?.attendanceId);
         if (!Number.isSafeInteger(attendanceId) || attendanceId < 1) {
