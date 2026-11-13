@@ -88,17 +88,28 @@ function registerContadorRoutes(app, pool, helpers) {
     const incomeTotal = income.reduce((sum, c) => sum + (Number(c.monto) || 0), 0);
     let spent = 0;
     let reserved = 0;
-    for (const row of expenses.rows) {
+    const activeRows = expenses.rows;
+    const paidAttendance = new Set(activeRows
+      .filter(row => row.record_type === 'payroll_payment')
+      .map(row => String(row.data?.attendanceId)));
+    let payrollAccrued = 0;
+    for (const row of activeRows) {
       const amount = Number(row.data?.amount) || 0;
-      if (row.record_type === 'expense' || row.record_type === 'electricity_bill' || row.record_type === 'cash_movement' && row.data?.direction === 'out' || row.record_type === 'payroll_payment' || row.record_type === 'admin_salary_payment' || row.record_type === 'cash_out') spent += amount;
+      if (['expense', 'electricity_bill', 'admin_salary_payment', 'cash_out'].includes(row.record_type) ||
+          row.record_type === 'cash_movement' && row.data?.direction === 'out') spent += amount;
+      if (row.record_type === 'attendance' && !paidAttendance.has(String(row.id))) payrollAccrued += amount;
       if (row.record_type === 'reserve') reserved += amount;
       if (row.record_type === 'reversal') {
         const originalType = row.data?.originalType;
-        if (['expense', 'electricity_bill', 'payroll_payment', 'admin_salary_payment', 'cash_out'].includes(originalType) || originalType === 'cash_movement' && row.data?.originalDirection === 'out') spent -= amount;
+        if (['expense', 'electricity_bill', 'admin_salary_payment', 'cash_out'].includes(originalType) ||
+            originalType === 'cash_movement' && row.data?.originalDirection === 'out') spent -= amount;
         if (originalType === 'reserve') reserved -= amount;
       }
     }
-    return { initial, incomeTotal, spent, reserved, free: Math.max(0, initial + incomeTotal - spent - reserved) };
+    return {
+      initial, incomeTotal, spent, reserved, payrollAccrued,
+      free: Math.max(0, initial + incomeTotal - spent - reserved - payrollAccrued)
+    };
   }
 
   app.get('/api/contador/admin-config', requireAuth, requireAdmin, async (_req, res, next) => {
@@ -209,7 +220,7 @@ function registerContadorRoutes(app, pool, helpers) {
         const hours = Number(body.data?.hours);
         const employeeId = Number(body.data?.employeeId);
         const weekStart = typeof body.data?.weekStart === 'string' ? body.data.weekStart : '';
-        if (!Number.isSafeInteger(employeeId) || employeeId < 1 || !Number.isFinite(hours) || hours < 0 || hours > 48 || !/^\\d{4}-\\d{2}-\\d{2}$/.test(weekStart)) {
+        if (!Number.isSafeInteger(employeeId) || employeeId < 1 || !Number.isFinite(hours) || hours < 0 || hours > 48 || !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
           await client.query('ROLLBACK');
           return res.status(400).json({ error: 'Empleado, semana u horas laboradas no válidos.' });
         }
