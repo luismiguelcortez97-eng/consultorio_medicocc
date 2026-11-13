@@ -92,14 +92,15 @@ function registerContadorRoutes(app, pool, helpers) {
     let reserved = 0;
     const activeRows = expenses.rows;
     const paidAttendance = new Set(activeRows.filter(row => row.record_type === 'payroll_payment').map(row => String(row.data?.attendanceId)));
-    const paidSalaries = new Set(activeRows.filter(row => row.record_type === 'salary_payment').map(row => String(row.data?.accrualId)));
+    const salaryPaid = new Map();
+    activeRows.filter(row => row.record_type === 'salary_payment').forEach(row => { const key=String(row.data?.accrualId); salaryPaid.set(key,(salaryPaid.get(key)||0)+(Number(row.data?.amount)||0)); });
     let payrollAccrued = 0;
     for (const row of activeRows) {
       const amount = Number(row.data?.amount) || 0;
       if (['expense', 'electricity_bill', 'admin_salary_payment', 'payroll_payment', 'salary_payment', 'cash_out'].includes(row.record_type) ||
           row.record_type === 'cash_movement' && row.data?.direction === 'out') spent += amount;
       if (row.record_type === 'attendance' && !paidAttendance.has(String(row.id))) payrollAccrued += amount;
-      if (row.record_type === 'salary_accrual' && !paidSalaries.has(String(row.id))) payrollAccrued += amount;
+      if (row.record_type === 'salary_accrual') payrollAccrued += Math.max(0, amount-(salaryPaid.get(String(row.id))||0));
       if (row.record_type === 'reserve') reserved += amount;
     }
     return {
@@ -333,14 +334,15 @@ function registerContadorRoutes(app, pool, helpers) {
           return res.status(403).json({ error: 'Los salarios solo pueden retirarse los días 14 y 30 de cada mes.' });
         }
         const accrual = await client.query("SELECT data FROM contador_records WHERE id=$1 AND record_type='salary_accrual' AND reversed_at IS NULL", [accrualId]);
-        const alreadyPaid = await client.query("SELECT id FROM contador_records WHERE record_type='salary_payment' AND data->>'accrualId'=$1 AND reversed_at IS NULL", [String(accrualId)]);
-        if (!accrual.rowCount || alreadyPaid.rowCount) {
+        const person = body.data?.person === 'accountant' ? 'accountant' : body.data?.person === 'admin' ? 'admin' : '';
+        const alreadyPaid = await client.query("SELECT id FROM contador_records WHERE record_type='salary_payment' AND data->>'accrualId'=$1 AND data->>'person'=$2 AND reversed_at IS NULL", [String(accrualId), person]);
+        if (!accrual.rowCount || !person || alreadyPaid.rowCount) {
           await client.query('ROLLBACK');
           return res.status(409).json({ error: 'El salario no existe o ya fue retirado.' });
         }
         const salary = accrual.rows[0].data || {};
-        const total = Math.round(((Number(salary.accountantAmount)||0) + (Number(salary.adminAmount)||0))*100)/100;
-        if (amount !== total) {
+        const total = person === 'accountant' ? Number(salary.accountantAmount)||0 : Number(salary.adminAmount)||0;
+        if (amount !== total || total <= 0) {
           await client.query('ROLLBACK');
           return res.status(409).json({ error: 'El importe no coincide con el salario semanal calculado.' });
         }
@@ -349,7 +351,7 @@ function registerContadorRoutes(app, pool, helpers) {
           await client.query('ROLLBACK');
           return res.status(400).json({ error: 'Selecciona la caja o cuenta de donde saldrá el retiro.' });
         }
-        cleanPayroll = { accrualId, weekStart: salary.weekStart, accountantAmount: Number(salary.accountantAmount)||0, adminAmount: Number(salary.adminAmount)||0, amount: total, account, concept: 'Retiro de salarios semanales' };
+        cleanPayroll = { accrualId, person, weekStart: salary.weekStart, amount: total, account, concept: person === 'accountant' ? 'Retiro semanal del Contador' : 'Retiro semanal del administrador' };
       }
       if (['expense', 'electricity_bill', 'reserve', 'admin_salary_payment', 'payroll_payment', 'salary_accrual', 'salary_payment', 'cash_movement'].includes(body.type) && amount > 0) {
         const capital = await getFreeCapital(client);
