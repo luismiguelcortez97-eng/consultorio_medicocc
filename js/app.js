@@ -3834,6 +3834,19 @@ function renderContadorPanel(data, view = 'inicio') {
   const expenses = records.filter(r => ['expense','electricity_bill','payroll_payment','admin_salary_payment','cash_out'].includes(r.type) && !r.reversedAt);
   const expenseTotal = expenses.reduce((s,r)=>s+(Number(r.data?.amount)||0),0);
   const reserved = Number(capital.reserved)||0, free = Number(capital.free)||0;
+  const accountRecords = records.filter(r=>r.type==='account'&&!r.reversedAt);
+  const cashBalance = (name, initial=0) => {
+    let total=Number(initial)||0;
+    if(name==='Efectivo') total += cobros.filter(c=>c.metodoPago==='Efectivo').reduce((s,c)=>s+(Number(c.monto)||0),0);
+    if(name==='Electrónico') total += cobros.filter(c=>['Tarjeta','Transferencia'].includes(c.metodoPago)).reduce((s,c)=>s+(Number(c.monto)||0),0);
+    records.filter(r=>!r.reversedAt).forEach(r=>{
+      if(r.data?.account!==name) return;
+      const amount=Number(r.data?.amount)||0;
+      if(r.type==='cash_movement') total += r.data?.direction==='out' ? -amount : amount;
+      else if(['expense','electricity_bill','payroll_payment','admin_salary_payment'].includes(r.type)) total -= amount;
+    });
+    return total;
+  };
   const incomeTotal = cobros.reduce((s,c)=>s+(Number(c.monto)||0),0);
   const patientById = new Map((data.pacientes||[]).map(p=>[String(p.id),p]));
   const consultById = new Map((data.consultas||[]).map(c=>[String(c.id),c]));
@@ -3881,11 +3894,12 @@ function renderContadorPanel(data, view = 'inicio') {
     <div class="card mt-3"><div class="card-header"><h3>Historial de nómina</h3></div><div class="card-body"><div class="table-responsive"><table><thead><tr><th>Fecha</th><th>Empleado</th><th>Horas</th><th>Importe</th><th>Estado</th></tr></thead><tbody>${payrollRows||'<tr><td colspan="5">Sin registros de nómina.</td></tr>'}</tbody></table></div></div></div>` :
     view==='caja' ? `
     <div class="card"><div class="card-header"><h3>Caja y cuentas</h3></div><div class="card-body">
-      <p><strong>Efectivo registrado por cobros:</strong> ${contadorMoney(cobros.filter(c=>c.metodoPago==='Efectivo').reduce((s,c)=>s+(Number(c.monto)||0),0))}</p>
-      <p><strong>Electrónico (tarjeta/transferencia):</strong> ${contadorMoney(cobros.filter(c=>['Tarjeta','Transferencia'].includes(c.metodoPago)).reduce((s,c)=>s+(Number(c.monto)||0),0))}</p>
+      <p><strong>Efectivo disponible calculado:</strong> ${contadorMoney(cashBalance('Efectivo'))}</p>
+      <p><strong>Electrónico disponible calculado:</strong> ${contadorMoney(cashBalance('Electrónico'))}</p>
+      ${accountRecords.map(r=>'<p><strong>'+contadorEscape(r.data?.bank)+' · '+contadorEscape(r.data?.name)+':</strong> '+contadorMoney(cashBalance(r.data?.name,r.data?.amount))+'</p>').join('')}
       <form id="contador-account-form"><h4>Agregar cuenta bancaria</h4><div class="form-row"><div class="form-group"><label>Banco</label><input id="ca-bank" class="form-control" required maxlength="80"></div><div class="form-group"><label>Nombre identificador</label><input id="ca-name" class="form-control" required maxlength="80"></div><div class="form-group"><label>Saldo inicial</label><input id="ca-balance" class="form-control" type="number" min="0" step="0.01" value="0" required></div></div><button class="btn btn-outline" type="submit">Agregar cuenta</button><div id="ca-status" class="mt-2"></div></form>
       <hr><h4>Registrar entrada o salida de cuenta/caja</h4><form id="contador-cash-form"><div class="form-row"><div class="form-group"><label>Dirección</label><select id="cc-direction" class="form-control"><option value="in">Entrada</option><option value="out">Salida</option></select></div><div class="form-group"><label>Cuenta / medio</label><select id="cc-account" class="form-control"><option>Efectivo</option><option>Electrónico</option>${records.filter(r=>r.type==='account').map(r=>'<option>'+contadorEscape(r.data?.name)+'</option>').join('')}</select></div><div class="form-group"><label>Importe</label><input id="cc-amount" class="form-control" type="number" min="0.01" step="0.01" required></div><div class="form-group"><label>Concepto</label><input id="cc-concept" class="form-control" required maxlength="120"></div></div><button class="btn btn-primary" type="submit">Registrar movimiento</button><div id="cc-status" class="mt-2"></div></form>
-      <hr><h4>Cuentas registradas</h4>${records.filter(r=>r.type==='account').map(r=>'<p><strong>'+contadorEscape(r.data?.bank)+' · '+contadorEscape(r.data?.name)+'</strong> — Saldo inicial: '+contadorMoney(r.data?.amount)+'</p>').join('')||'<p class="text-muted">Todavía no agregas cuentas bancarias.</p>'}
+      <hr><h4>Cuentas registradas</h4>${accountRecords.map(r=>'<p><strong>'+contadorEscape(r.data?.bank)+' · '+contadorEscape(r.data?.name)+'</strong> — Saldo actual calculado: '+contadorMoney(cashBalance(r.data?.name,r.data?.amount))+'</p>').join('')||'<p class="text-muted">Todavía no agregas cuentas bancarias.</p>'}
     </div></div>` :
     view==='balance' ? `
     <div class="card"><div class="card-header"><h3>Balance financiero actual</h3></div><div class="card-body"><div class="stats-grid"><div class="stat-card"><div class="stat-info"><h4>${contadorMoney(incomeTotal)}</h4><p>Ingresos confirmados acumulados</p></div></div><div class="stat-card"><div class="stat-info"><h4>${contadorMoney(expenseTotal)}</h4><p>Gastos y salidas registradas</p></div></div><div class="stat-card"><div class="stat-info"><h4>${contadorMoney(reserved)}</h4><p>Capital reservado</p></div></div><div class="stat-card"><div class="stat-info"><h4>${contadorMoney(free)}</h4><p>Capital libre</p></div></div></div><p><strong>Capital inicial:</strong> ${contadorMoney(capital.initial)}</p><p><strong>Capital disponible calculado:</strong> ${contadorMoney(free)}</p><p class="text-muted">El saldo operativo se calcula con capital inicial + cobros confirmados − egresos autorizados − reservas.</p></div></div>` :
