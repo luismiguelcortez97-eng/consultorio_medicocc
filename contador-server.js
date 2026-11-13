@@ -84,7 +84,9 @@ function registerContadorRoutes(app, pool, helpers) {
       client.query("SELECT setting_value FROM contador_settings WHERE setting_key='general'")
     ]);
     const settings = settingsResult.rows[0]?.setting_value || {};
-    const initial = Number(settings.capitalInicial) || 0;
+    const legacyInitial = Number(settings.capitalInicial) || 0;
+    const approvedInitial = expenses.rows.filter(row => row.record_type === 'initial_capital').reduce((sum, row) => sum + (Number(row.data?.amount) || 0), 0);
+    const initial = legacyInitial + approvedInitial;
     const incomeTotal = income.reduce((sum, c) => sum + (Number(c.monto) || 0), 0);
     let spent = 0;
     let reserved = 0;
@@ -117,9 +119,14 @@ function registerContadorRoutes(app, pool, helpers) {
   app.put('/api/contador/admin-config', requireAuth, requireAdmin, async (req, res, next) => {
     try {
       const body = req.body || {};
+      const previous = await pool.query("SELECT setting_value FROM contador_settings WHERE setting_key='general'");
+      const previousSettings = previous.rows[0]?.setting_value || {};
+      const changesSalary = Number(body.salaryAccountantPercent) !== Number(previousSettings.salaryAccountantPercent || 0) || Number(body.salaryAdminPercent) !== Number(previousSettings.salaryAdminPercent || 0);
+      if (changesSalary && !(await checkNip(body.authorizationNip))) return res.status(403).json({ error: 'El Contador debe autorizar los porcentajes salariales con su clave.' });
       const settings = {
+        ...previousSettings,
         rentMonthly: Math.max(0, Number(body.rentMonthly) || 0),
-        capitalInicial: Math.max(0, Number(body.capitalInicial) || 0),
+        
         salarioBaseDiario: Math.max(0, Number(body.salarioBaseDiario) || 440),
         salaryAccountantPercent: Math.max(0, Math.min(100, Number(body.salaryAccountantPercent) || 0)),
         salaryAdminPercent: Math.max(0, Math.min(100, Number(body.salaryAdminPercent) || 0)),
@@ -194,24 +201,44 @@ function registerContadorRoutes(app, pool, helpers) {
 
   app.post('/api/contador/records', financeAccess, async (req, res, next) => {
     const body = req.body || {};
-    const allowed = new Set(['expense', 'electricity_bill', 'employee', 'attendance', 'account', 'cash_movement', 'reserve', 'admin_salary_payment', 'payroll_payment', 'salary_config', 'salary_accrual', 'salary_payment']);
+    const allowed = new Set(['expense', 'electricity_bill', 'employee', 'attendance', 'account', 'cash_movement', 'reserve', 'admin_salary_payment', 'payroll_payment', 'salary_config', 'salary_accrual', 'salary_payment', 'initial_capital']);
     if (!allowed.has(body.type)) return res.status(400).json({ error: 'Tipo de registro no válido.' });
     const amount = body.data?.amount == null ? null : Number(body.data.amount);
     if (amount != null && (!Number.isFinite(amount) || amount < 0 || amount > 100000000)) {
       return res.status(400).json({ error: 'Importe inválido.' });
     }
-    const requiresNip = ['expense', 'electricity_bill', 'reserve', 'admin_salary_payment', 'payroll_payment', 'salary_accrual', 'salary_payment'].includes(body.type) ||
+    const requiresNip = ['expense', 'electricity_bill', 'reserve', 'admin_salary_payment', 'payroll_payment', 'salary_accrual', 'salary_payment', 'initial_capital'].includes(body.type) ||
       (body.type === 'cash_movement' && body.data?.direction === 'out');
     const client = await pool.connect();
     let cleanPayroll = body.data || {};
     try {
       await client.query('BEGIN');
-      if (['expense', 'electricity_bill', 'reserve', 'admin_salary_payment', 'payroll_payment', 'salary_accrual', 'salary_payment', 'cash_movement'].includes(body.type)) {
+      if (['expense', 'electricity_bill', 'reserve', 'admin_salary_payment', 'payroll_payment', 'salary_accrual', 'salary_payment', 'initial_capital', 'cash_movement'].includes(body.type)) {
         await client.query("SELECT pg_advisory_xact_lock(hashtext('consultorio_contador_ledger'))");
       }
       if (requiresNip && !(await checkNip(body.authorizationNip))) {
         await client.query('ROLLBACK');
         return res.status(403).json({ error: 'Se requiere la autorización del Contador. La clave no es correcta.' });
+      }
+      if (body.type === 'initial_capital') {
+        if (!amount || amount <= 0) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'El capital inicial debe ser mayor a cero.' });
+        }
+        const existing = await client.query("SELECT id FROM contador_records WHERE record_type='initial_capital' AND reversed_at IS NULL");
+        if (existing.rowCount) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({ error: 'El capital inicial ya fue autorizado. Para corregirlo debe revertirse con motivo y autorización.' });
+        }
+        const account = typeof body.data?.account === 'string' ? body.data.account.trim().slice(0,80) : '';
+        if (!['Efectivo','Electrónico','Transferencias por asignar'].includes(account)) {
+          const validAccount = await client.query("SELECT id FROM contador_records WHERE record_type='account' AND reversed_at IS NULL AND data->>'name'=$1", [account]);
+          if (!account || !validAccount.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Selecciona una cuenta o caja existente para depositar el capital.' });
+          }
+        }
+        cleanPayroll = { amount, account, concept: 'Capital inicial autorizado por el Contador', date: new Date().toISOString() };
       }
       if (body.type === 'attendance') {
         const hours = Number(body.data?.hours);
@@ -291,6 +318,10 @@ function registerContadorRoutes(app, pool, helpers) {
         if (total > capital.free) {
           await client.query('ROLLBACK');
           return res.status(409).json({ error: 'Los salarios superan el capital libre disponible.' });
+        }
+        if (total <= 0) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({ error: 'No hay capital libre o los porcentajes salariales están en cero. No se generó ninguna obligación.' });
         }
         cleanPayroll = { weekStart, amount: total, accountantPercent, adminPercent, accountantAmount, adminAmount, concept: 'Salarios semanales de administración y Contador' };
       }
