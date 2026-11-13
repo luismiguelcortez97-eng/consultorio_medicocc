@@ -109,6 +109,33 @@ function registerContadorRoutes(app, pool, helpers) {
     };
   }
 
+  async function getAccountBalance(account, client = pool) {
+    const [incomeResult, rowsResult] = await Promise.all([
+      client.query("SELECT data FROM app_records WHERE store='cobros'"),
+      client.query("SELECT record_type,data FROM contador_records WHERE reversed_at IS NULL")
+    ]);
+    let balance = 0;
+    for (const row of incomeResult.rows) {
+      const cobro = row.data || {};
+      if (cobro.status !== 'pagado') continue;
+      if (account === 'Efectivo' && cobro.metodoPago === 'Efectivo') balance += Number(cobro.monto)||0;
+      if (account === 'Electrónico' && cobro.metodoPago === 'Tarjeta') balance += Number(cobro.monto)||0;
+      if (account === 'Transferencias por asignar' && cobro.metodoPago === 'Transferencia') balance += Number(cobro.monto)||0;
+    }
+    for (const row of rowsResult.rows) {
+      const data = row.data || {}, amount = Number(data.amount)||0;
+      if (row.record_type === 'account' && data.name === account) balance += amount;
+      else if (row.record_type === 'initial_capital' && data.account === account) balance += amount;
+      else if (row.record_type === 'cash_movement' && data.account === account) balance += data.direction === 'out' ? -amount : amount;
+      else if (['expense','electricity_bill','payroll_payment','admin_salary_payment','salary_payment'].includes(row.record_type) && data.account === account) balance -= amount;
+      else if (row.record_type === 'reversal' && data.originalAccount === account) {
+        if (data.originalType === 'cash_movement') balance += data.originalDirection === 'out' ? amount : -amount;
+        else if (['expense','electricity_bill','payroll_payment','admin_salary_payment','salary_payment'].includes(data.originalType)) balance += amount;
+      }
+    }
+    return balance;
+  }
+
   app.get('/api/contador/admin-config', requireAuth, requireAdmin, async (_req, res, next) => {
     try {
       const result = await pool.query("SELECT setting_value FROM contador_settings WHERE setting_key='general'");
