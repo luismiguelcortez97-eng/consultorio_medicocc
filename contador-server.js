@@ -74,7 +74,7 @@ function registerContadorRoutes(app, pool, helpers) {
 
   async function getPaidIncome(client = pool) {
     const result = await client.query("SELECT data FROM app_records WHERE store='cobros'");
-    return result.rows.map(row => row.data).filter(c => c && c.status === 'pagado' && c.tipo === 'medico' && c.consultaId != null);
+    return result.rows.map(row => row.data).filter(c => c && c.status === 'pagado' && c.tipo === 'medico');
   }
 
   async function getFreeCapital(client = pool) {
@@ -89,15 +89,15 @@ function registerContadorRoutes(app, pool, helpers) {
     let spent = 0;
     let reserved = 0;
     const activeRows = expenses.rows;
-    const paidAttendance = new Set(activeRows
-      .filter(row => row.record_type === 'payroll_payment')
-      .map(row => String(row.data?.attendanceId)));
+    const paidAttendance = new Set(activeRows.filter(row => row.record_type === 'payroll_payment').map(row => String(row.data?.attendanceId)));
+    const paidSalaries = new Set(activeRows.filter(row => row.record_type === 'salary_payment').map(row => String(row.data?.accrualId)));
     let payrollAccrued = 0;
     for (const row of activeRows) {
       const amount = Number(row.data?.amount) || 0;
-      if (['expense', 'electricity_bill', 'admin_salary_payment', 'payroll_payment', 'cash_out'].includes(row.record_type) ||
+      if (['expense', 'electricity_bill', 'admin_salary_payment', 'payroll_payment', 'salary_payment', 'cash_out'].includes(row.record_type) ||
           row.record_type === 'cash_movement' && row.data?.direction === 'out') spent += amount;
       if (row.record_type === 'attendance' && !paidAttendance.has(String(row.id))) payrollAccrued += amount;
+      if (row.record_type === 'salary_accrual' && !paidSalaries.has(String(row.id))) payrollAccrued += amount;
       if (row.record_type === 'reserve') reserved += amount;
     }
     return {
@@ -191,19 +191,19 @@ function registerContadorRoutes(app, pool, helpers) {
 
   app.post('/api/contador/records', financeAccess, async (req, res, next) => {
     const body = req.body || {};
-    const allowed = new Set(['expense', 'electricity_bill', 'employee', 'attendance', 'account', 'cash_movement', 'reserve', 'admin_salary_payment', 'payroll_payment', 'salary_config']);
+    const allowed = new Set(['expense', 'electricity_bill', 'employee', 'attendance', 'account', 'cash_movement', 'reserve', 'admin_salary_payment', 'payroll_payment', 'salary_config', 'salary_accrual', 'salary_payment']);
     if (!allowed.has(body.type)) return res.status(400).json({ error: 'Tipo de registro no válido.' });
     const amount = body.data?.amount == null ? null : Number(body.data.amount);
     if (amount != null && (!Number.isFinite(amount) || amount < 0 || amount > 100000000)) {
       return res.status(400).json({ error: 'Importe inválido.' });
     }
-    const requiresNip = ['expense', 'electricity_bill', 'reserve', 'admin_salary_payment', 'payroll_payment'].includes(body.type) ||
+    const requiresNip = ['expense', 'electricity_bill', 'reserve', 'admin_salary_payment', 'payroll_payment', 'salary_accrual', 'salary_payment'].includes(body.type) ||
       (body.type === 'cash_movement' && body.data?.direction === 'out');
     const client = await pool.connect();
     let cleanPayroll = body.data || {};
     try {
       await client.query('BEGIN');
-      if (['expense', 'electricity_bill', 'reserve', 'admin_salary_payment', 'payroll_payment', 'cash_movement'].includes(body.type)) {
+      if (['expense', 'electricity_bill', 'reserve', 'admin_salary_payment', 'payroll_payment', 'salary_accrual', 'salary_payment', 'cash_movement'].includes(body.type)) {
         await client.query("SELECT pg_advisory_xact_lock(hashtext('consultorio_contador_ledger'))");
       }
       if (requiresNip && !(await checkNip(body.authorizationNip))) {
@@ -261,9 +261,60 @@ function registerContadorRoutes(app, pool, helpers) {
         }
         cleanPayroll = { ...body.data, employeeName: attendance.rows[0].data?.employeeName, attendanceId, amount };
       }
-      if (['expense', 'electricity_bill', 'reserve', 'admin_salary_payment', 'payroll_payment', 'cash_movement'].includes(body.type) && amount > 0) {
+      if (body.type === 'salary_accrual') {
+        const weekStart = typeof body.data?.weekStart === 'string' ? body.data.weekStart : '';
+        if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(weekStart)) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'Selecciona una semana válida.' });
+        }
+        const weekDate = new Date(weekStart + 'T12:00:00Z');
+        if (Number.isNaN(weekDate.getTime()) || weekDate.getUTCDay() !== 1 || weekDate.toISOString().slice(0,10) !== weekStart) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'La semana debe iniciar en lunes.' });
+        }
+        const duplicate = await client.query("SELECT id FROM contador_records WHERE record_type='salary_accrual' AND reversed_at IS NULL AND data->>'weekStart'=$1", [weekStart]);
+        if (duplicate.rowCount) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({ error: 'Los salarios de esa semana ya fueron calculados.' });
+        }
+        const configResult = await client.query("SELECT setting_value FROM contador_settings WHERE setting_key='general'");
+        const config = configResult.rows[0]?.setting_value || {};
         const capital = await getFreeCapital(client);
-        if (['expense', 'electricity_bill', 'admin_salary_payment', 'payroll_payment'].includes(body.type) ||
+        const accountantPercent = Number(config.salaryAccountantPercent) || 0;
+        const adminPercent = Number(config.salaryAdminPercent) || 0;
+        const accountantAmount = Math.round(capital.free * accountantPercent) / 100;
+        const adminAmount = Math.round(capital.free * adminPercent) / 100;
+        const total = Math.round((accountantAmount + adminAmount) * 100) / 100;
+        if (total > capital.free) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({ error: 'Los salarios superan el capital libre disponible.' });
+        }
+        cleanPayroll = { weekStart, amount: total, accountantPercent, adminPercent, accountantAmount, adminAmount, concept: 'Salarios semanales de administración y Contador' };
+      }
+      if (body.type === 'salary_payment') {
+        const accrualId = Number(body.data?.accrualId);
+        const payoutDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Tijuana', day: '2-digit' }).format(new Date());
+        if (!Number.isSafeInteger(accrualId) || accrualId < 1 || !['14','30'].includes(payoutDate)) {
+          await client.query('ROLLBACK');
+          return res.status(403).json({ error: 'Los salarios solo pueden retirarse los días 14 y 30 de cada mes.' });
+        }
+        const accrual = await client.query("SELECT data FROM contador_records WHERE id=$1 AND record_type='salary_accrual' AND reversed_at IS NULL", [accrualId]);
+        const alreadyPaid = await client.query("SELECT id FROM contador_records WHERE record_type='salary_payment' AND data->>'accrualId'=$1 AND reversed_at IS NULL", [String(accrualId)]);
+        if (!accrual.rowCount || alreadyPaid.rowCount) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({ error: 'El salario no existe o ya fue retirado.' });
+        }
+        const salary = accrual.rows[0].data || {};
+        const total = Math.round(((Number(salary.accountantAmount)||0) + (Number(salary.adminAmount)||0))*100)/100;
+        if (amount !== total) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({ error: 'El importe no coincide con el salario semanal calculado.' });
+        }
+        cleanPayroll = { accrualId, weekStart: salary.weekStart, accountantAmount: Number(salary.accountantAmount)||0, adminAmount: Number(salary.adminAmount)||0, amount: total, concept: 'Retiro de salarios semanales' };
+      }
+      if (['expense', 'electricity_bill', 'reserve', 'admin_salary_payment', 'payroll_payment', 'salary_accrual', 'salary_payment', 'cash_movement'].includes(body.type) && amount > 0) {
+        const capital = await getFreeCapital(client);
+        if (['expense', 'electricity_bill', 'admin_salary_payment', 'payroll_payment', 'salary_payment'].includes(body.type) ||
             (body.type === 'cash_movement' && body.data?.direction === 'out')) {
           if (amount > capital.free) {
             await client.query('ROLLBACK');
