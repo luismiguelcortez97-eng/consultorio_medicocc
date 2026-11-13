@@ -3844,6 +3844,11 @@ function renderContadorPanel(data, view = 'inicio') {
       const amount=Number(r.data?.amount)||0;
       if(r.type==='cash_movement') total += r.data?.direction==='out' ? -amount : amount;
       else if(['expense','electricity_bill','payroll_payment','admin_salary_payment'].includes(r.type)) total -= amount;
+      else if(r.type==='reversal') {
+        if(r.data?.originalAccount!==name) return;
+        if(r.data?.originalType==='cash_movement') total += r.data?.originalDirection==='out' ? amount : -amount;
+        else if(['expense','electricity_bill','payroll_payment','admin_salary_payment'].includes(r.data?.originalType)) total += amount;
+      }
     });
     return total;
   };
