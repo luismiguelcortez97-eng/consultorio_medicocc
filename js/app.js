@@ -3962,51 +3962,7 @@ function renderContadorPanel(data, view = 'inicio') {
     const methods={'1':'Efectivo','2':'Tarjeta','3':'Transferencia'};
     if(!methods[rawMethod.trim()]){alert('Selecciona 1, 2 o 3 para registrar un método válido.');return;}
     const method=methods[rawMethod.trim()];
-    if(!confirm('¿Confirmar 
-    const reason=window.prompt('Confirma que el paciente no fue cobrado e indica el motivo de la anulación:');
-    if(reason===null)return;
-    if(!reason.trim()){alert('Debes indicar el motivo.');return;}
-    const authorizationNip=window.prompt('Introduce la clave del Contador para autorizar esta anulación:');
-    if(authorizationNip===null)return;
-    try {
-      await contadorRequest('/api/contador/cobros/anular',{method:'POST',body:JSON.stringify({kind:btn.dataset.cancelKind,id:Number(btn.dataset.cancelId),reason:reason.trim(),authorizationNip})});
-      alert('Registro anulado. Se conservó el historial.');
-      await renderContador();
-      renderContadorPanel(await contadorRequest('/api/contador/data'),'control-cobros');
-    } catch(error){alert(error.message);}
-  }));
-  area.querySelectorAll('[data-salary-id]').forEach(btn=>btn.addEventListener('click',async()=>{const accrual=records.find(r=>String(r.id)===btn.dataset.salaryId);if(!accrual)return;const person=btn.dataset.salaryPerson;const amount=person==='accountant'?Number(accrual.data?.accountantAmount)||0:Number(accrual.data?.adminAmount)||0;const options=['Efectivo','Electrónico',...accountRecords.map(r=>r.data?.name).filter(Boolean)];const account=window.prompt('¿De qué caja o cuenta saldrá el retiro?\\n'+options.join(' / '),'Efectivo');if(account===null)return;if(!options.includes(account)){alert('Selecciona una caja o cuenta registrada.');return;}await contadorSubmitRecord('salary_payment',{accrualId:accrual.id,person,amount,account},'Autorizar retiro salarial','',true);}));
-   area.querySelector('#contador-accrue-salaries')?.addEventListener('click',async()=>{const d=new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()-((d.getDay()+6)%7));const weekStart=contadorLocalDate(d);await contadorSubmitRecord('salary_accrual',{weekStart},'Autorizar cálculo y apartado de salarios semanales','cs-status',true);});
-   area.querySelectorAll('[data-payroll-id]').forEach(btn=>btn.addEventListener('click',async()=>{const attendance=records.find(r=>String(r.id)===btn.dataset.payrollId);if(!attendance)return;const options=['Efectivo','Electrónico',...accountRecords.map(r=>r.data?.name).filter(Boolean)];const account=window.prompt('¿De qué caja o cuenta saldrá el pago?\\n'+options.join(' / '),'Efectivo');if(account===null)return;if(!options.includes(account)){alert('Selecciona una caja o cuenta registrada.');return;}await contadorSubmitRecord('payroll_payment',{attendanceId:attendance.id,amount:Number(attendance.data?.amount)||0,employeeId:attendance.data?.employeeId,employeeName:attendance.data?.employeeName,account,concept:'Pago semanal de nómina'},'Autorizar pago de nómina','',true);}));
-  area.querySelector('[data-contador-rent]')?.addEventListener('click',()=>{const concept='Renta '+today.slice(0,7);if(records.some(r=>r.type==='expense'&&!r.reversedAt&&r.data?.concept===concept)){alert('La renta de este mes ya fue registrada.');return;}const amount=Number(settings.rentMonthly)||0;if(amount<=0){alert('Configura primero el importe de renta en Configuración.');return;}contadorSubmitRecord('expense',{concept,category:'Renta',amount,date:today,account:'Efectivo'},'Autorizar registro de renta','');});
-  document.getElementById('contador-expense-form')?.addEventListener('submit',async e=>{e.preventDefault();await contadorSubmitRecord('expense',{category:document.getElementById('ce-category').value,concept:document.getElementById('ce-concept').value.trim(),amount:Number(document.getElementById('ce-amount').value),date:document.getElementById('ce-date').value,account:document.getElementById('ce-account').value},'Autorizar egreso', 'ce-status');});
-  document.getElementById('contador-light-form')?.addEventListener('submit',async e=>{e.preventDefault();const account=window.prompt('¿De qué caja o cuenta se pagó el recibo?','Efectivo');if(!account)return;await contadorSubmitRecord('electricity_bill',{category:'Luz',concept:'Recibo de luz '+document.getElementById('cl-month').value,month:document.getElementById('cl-month').value,amount:Number(document.getElementById('cl-amount').value),account},'Autorizar recibo de luz','cl-status');});
-  document.getElementById('contador-employee-form')?.addEventListener('submit',async e=>{
-    e.preventDefault();const mode=document.getElementById('cp-mode').value;const hours=mode==='full'?48:mode==='missed'?40:Number(document.getElementById('cp-hours').value);
-    const employee=(data.empleados||[]).find(x=>String(x.id)===document.getElementById('cp-employee').value);const amount=Math.round(hours*(Number(settings.salarioBaseDiario)||440)/8*100)/100;
-    await contadorSubmitRecord('attendance',{employeeId:employee?.id,employeeName:employee?.nombre||employee?.name||'Empleado',weekStart:document.getElementById('cp-week').value,hours,amount,mode},'Registrar cálculo de nómina','cp-status',false);
-  });
-  document.getElementById('cp-mode')?.addEventListener('change',e=>{const h=document.getElementById('cp-hours');h.disabled=e.target.value!=='manual';if(e.target.value==='full')h.value=48;else if(e.target.value==='missed')h.value=40;});
-  document.getElementById('contador-account-form')?.addEventListener('submit',async e=>{e.preventDefault();const amount=Number(document.getElementById('ca-balance').value);await contadorSubmitRecord('account',{bank:document.getElementById('ca-bank').value.trim(),name:document.getElementById('ca-name').value.trim(),amount},'Autorizar saldo inicial de cuenta','ca-status',amount>0);});
-  document.getElementById('contador-cash-form')?.addEventListener('submit',async e=>{e.preventDefault();const direction=document.getElementById('cc-direction').value;await contadorSubmitRecord('cash_movement',{direction,account:document.getElementById('cc-account').value,amount:Number(document.getElementById('cc-amount').value),concept:document.getElementById('cc-concept').value.trim()},direction==='out'?'Autorizar salida de caja':'Registrar entrada de caja','cc-status',direction==='out');});
-  document.getElementById('cr-add')?.addEventListener('click',()=>{const box=document.getElementById('cr-lines');const row=document.createElement('div');row.className='form-row';row.innerHTML='<div class="form-group"><label>Administrador</label><input class="form-control cr-name" maxlength="80" required></div><div class="form-group"><label>Porcentaje</label><input class="form-control cr-percent" type="number" min="0" max="100" step="0.01" value="0" required></div>';box.appendChild(row);});
-  document.getElementById('contador-reserve-form')?.addEventListener('submit',async e=>{
-    e.preventDefault();const names=[...document.querySelectorAll('.cr-name')],percents=[...document.querySelectorAll('.cr-percent')];const distribution=names.map((x,i)=>({name:x.value.trim(),percent:Number(percents[i].value)}));const total=distribution.reduce((s,x)=>s+x.percent,0);
-    const status=document.getElementById('cr-status');if(total>100.0001){status.className='alert alert-warning mt-2';status.textContent='Los porcentajes no pueden superar 100%.';return;}
-    try{await contadorRequest('/api/contador/admin-config',{method:'PUT',body:JSON.stringify({...settings,capitalDistribution:distribution})});const reserve=free*total/100;if(reserve>0)await contadorSubmitRecord('reserve',{amount:reserve,distribution,concept:'Reserva de capital de administradores'},'Autorizar reserva de capital','cr-status',true);else{status.className='alert alert-success mt-2';status.textContent='Porcentajes guardados. No hay importe que reservar.';await renderContador();}}catch(error){status.className='alert alert-danger mt-2';status.textContent=error.message;}
-  });
-}
-async function contadorSubmitRecord(type, data, promptText, statusId, requireNip = true) {
-  let authorizationNip = '';
-  if (requireNip) { authorizationNip = window.prompt(promptText+' — introduce la clave del Contador:'); if (authorizationNip === null) return; }
-  const status = statusId ? document.getElementById(statusId) : null;
-  try {
-    await contadorRequest('/api/contador/records',{method:'POST',body:JSON.stringify({type,data,authorizationNip})});
-    if(status){status.className='alert alert-success mt-2';status.textContent='Movimiento registrado correctamente.';}
-    await renderContador();
-  } catch(error) { if(status){status.className='alert alert-danger mt-2';status.textContent=error.message;} else alert(error.message); }
-}
-+amount.toFixed(2)+' recibidos por '+method+'?'))return;
+    if(!confirm('¿Confirmar '+amount.toFixed(2)+' recibidos por '+method+'?'))return;
     btn.disabled=true;
     try{
       await contadorRequest('/api/contador/cobros/confirmar',{method:'POST',body:JSON.stringify({id,amount,method})});
