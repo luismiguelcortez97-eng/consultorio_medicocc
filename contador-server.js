@@ -128,6 +128,9 @@ function registerContadorRoutes(app, pool, helpers) {
           percent: Math.max(0, Math.min(100, Number(item.percent) || 0))
         })).filter(item => item.name) : []
       };
+      if (settings.salaryAccountantPercent + settings.salaryAdminPercent > 100.0001) {
+        return res.status(400).json({ error: 'Los porcentajes semanales del Contador y administrador no pueden superar juntos el 100%.' });
+      }
       if (settings.capitalDistribution.reduce((sum, item) => sum + item.percent, 0) > 100.0001) {
         return res.status(400).json({ error: 'La distribución del capital no puede superar el 100%.' });
       }
