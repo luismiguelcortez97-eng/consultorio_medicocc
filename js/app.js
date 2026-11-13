@@ -3897,7 +3897,7 @@ function renderContadorPanel(data, view = 'inicio') {
   const missingRows = missingCharges.sort((x,y)=>String(y.fecha||'').localeCompare(String(x.fecha||''))).map(c => '<tr><td>'+contadorEscape(dateTime(c.fecha))+'</td><td>'+contadorEscape(patientName(c.pacienteId))+'</td><td>'+contadorEscape(doctorName(c.medicoId))+'</td><td>'+contadorEscape(c.motivo||'Consulta médica')+'</td><td><span class="badge badge-warning">Sin cobro registrado</span></td><td><button type="button" class="btn btn-outline btn-sm" data-cancel-kind="consulta" data-cancel-id="'+Number(c.id)+'">Anular / marcar no cobrada</button></td></tr>').join('');
   const pendingRows = pendingCharges.sort((x,y)=>String(y.fecha||'').localeCompare(String(x.fecha||''))).map(c => {
     const consultation=consultById.get(String(c.consultaId||'')), patient=patientById.get(String(c.pacienteId||consultation?.pacienteId||''));
-    return '<tr><td>'+contadorEscape(dateTime(c.fecha))+'</td><td>'+contadorEscape(patient?.nombre||patient?.name||c.referencia||'—')+'</td><td>'+contadorMoney(c.monto)+'</td><td><span class="badge badge-warning">Pendiente</span></td><td><div class="d-flex gap-2 flex-wrap"><button type="button" class="btn btn-success btn-sm" data-confirm-cobro-id="'+Number(c.id)+'">Confirmar cobro</button><button type="button" class="btn btn-outline btn-sm" data-cancel-kind="cobro" data-cancel-id="'+Number(c.id)+'">Anular cobro</button></div></td></tr>';
+    return '<tr><td>'+contadorEscape(dateTime(c.fecha))+'</td><td>'+contadorEscape(patient?.nombre||patient?.name||c.referencia||'—')+'</td><td><form class="d-flex gap-2 flex-wrap align-items-center" data-confirm-cobro-form data-id="'+Number(c.id)+'"><input class="form-control" style="max-width:125px" type="number" name="amount" min="0.01" max="10000000" step="0.01" value="'+(Number(c.monto)>0?Number(c.monto).toFixed(2):'')+'" aria-label="Cantidad realmente cobrada" placeholder="Cantidad" required><select class="form-control" name="method" aria-label="Medio de pago" required><option value="">Medio de pago</option><option value="Efectivo">Efectivo</option><option value="Tarjeta">Tarjeta</option><option value="Transferencia">Transferencia</option></select><button type="submit" class="btn btn-success btn-sm">Guardar y confirmar</button><button type="button" class="btn btn-outline btn-sm" data-cancel-kind="cobro" data-cancel-id="'+Number(c.id)+'">Anular cobro</button></form></td><td><span class="badge badge-warning">Pendiente</span></td></tr>';
   }).join('');
   const canceledCobroRows = allCobros.filter(c=>c.status==='cancelado').sort((x,y)=>String(y.anuladoAt||y.fecha||'').localeCompare(String(x.anuladoAt||x.fecha||''))).map(c=>{
     const consultation=consultById.get(String(c.consultaId||'')), patient=patientById.get(String(c.pacienteId||consultation?.pacienteId||''));
@@ -3949,27 +3949,24 @@ function renderContadorPanel(data, view = 'inicio') {
   area.innerHTML = '<div class="d-flex gap-2 flex-wrap mb-3">'+buttonHtml+'</div>'+viewHtml;
   area.querySelectorAll('[data-contador-view]').forEach(btn=>btn.addEventListener('click',()=>renderContadorPanel(data,btn.dataset.contadorView)));
   area.querySelector('[data-contador-refresh]')?.addEventListener('click',renderContador);
-  area.querySelectorAll('[data-confirm-cobro-id]').forEach(btn=>btn.addEventListener('click',async()=>{
-    const id=Number(btn.dataset.confirmCobroId);
+  area.querySelectorAll('[data-confirm-cobro-form]').forEach(form=>form.addEventListener('submit',async e=>{
+    e.preventDefault();
+    const id=Number(form.dataset.id);
     const pending=(data.cobros||[]).find(c=>Number(c.id)===id && c.status==='pendiente');
     if(!pending){alert('El cobro ya no está pendiente. Actualiza la lista.');return;}
-    const rawAmount=window.prompt('Cantidad realmente recibida (MXN):',String(Number(pending.monto)||''));
-    if(rawAmount===null)return;
-    const amount=Number(rawAmount.trim().replace(',','.'));
-    if(!Number.isFinite(amount)||amount<=0||amount>10000000){alert('Ingresa una cantidad válida mayor que $0.');return;}
-    const rawMethod=window.prompt('Método de pago:\\n1 = Efectivo\\n2 = Tarjeta\\n3 = Transferencia','1');
-    if(rawMethod===null)return;
-    const methods={'1':'Efectivo','2':'Tarjeta','3':'Transferencia'};
-    if(!methods[rawMethod.trim()]){alert('Selecciona 1, 2 o 3 para registrar un método válido.');return;}
-    const method=methods[rawMethod.trim()];
-    if(!confirm('¿Confirmar '+amount.toFixed(2)+' recibidos por '+method+'?'))return;
-    btn.disabled=true;
+    const amount=Number(form.elements.amount.value);
+    const method=form.elements.method.value;
+    if(!Number.isFinite(amount)||amount<=0||amount>10000000){alert('Ingresa una cantidad válida mayor que $0.');form.elements.amount.focus();return;}
+    if(!['Efectivo','Tarjeta','Transferencia'].includes(method)){alert('Selecciona un medio de pago válido.');form.elements.method.focus();return;}
+    if(!confirm('¿Registrar '+amount.toFixed(2)+' recibidos por '+method+' y quitar este cobro de pendientes?'))return;
+    const submit=form.querySelector('button[type="submit"]');
+    submit.disabled=true;
     try{
       await contadorRequest('/api/contador/cobros/confirmar',{method:'POST',body:JSON.stringify({id,amount,method})});
       alert('Cobro confirmado. El ingreso se reflejará en ingresos y Caja.');
       const fresh=await contadorRequest('/api/contador/data');
       renderContadorPanel(fresh,'control-cobros');
-    }catch(error){alert(error.message);btn.disabled=false;}
+    }catch(error){alert(error.message);submit.disabled=false;}
   }));
   area.querySelectorAll('[data-cancel-kind]').forEach(btn=>btn.addEventListener('click',async()=>{
     const reason=window.prompt('Confirma que el paciente no fue cobrado e indica el motivo de la anulación:');
