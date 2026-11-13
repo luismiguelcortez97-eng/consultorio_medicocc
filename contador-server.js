@@ -326,7 +326,7 @@ function registerContadorRoutes(app, pool, helpers) {
           return res.status(409).json({ error: 'No se puede reservar más que el capital libre disponible.' });
         }
       }
-      const cleanData = { ...(typeof cleanPayroll !== 'undefined' ? cleanPayroll : body.data), amount: amount == null ? undefined : amount };
+      const cleanData = { ...(typeof cleanPayroll !== 'undefined' ? cleanPayroll : body.data), amount: amount == null ? (cleanPayroll?.amount ?? undefined) : amount };
       delete cleanData.authorizationNip;
       const result = await client.query(
         'INSERT INTO contador_records(record_type,data,created_by) VALUES($1,$2,$3) RETURNING id,record_type AS type,data,created_by AS "createdBy",created_at AS "createdAt"',
