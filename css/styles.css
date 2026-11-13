@@ -1145,3 +1145,64 @@ body.tema-suave .study-search-results,
 .sidebar-header {
   text-align: center;
 }
+
+
+/* ========== CONTROL DE COBROS: CAPTURA LIMPIA Y RESPONSIVA ========== */
+.charge-control-card .card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.charge-control-card .card-header h3 { margin: 0; }
+.charge-section-hint {
+  margin: .35rem 0 0;
+  color: var(--text-muted, #6b7280);
+  font-size: .88rem;
+  line-height: 1.45;
+}
+.charge-review-list { display: grid; gap: .9rem; }
+.charge-review-item {
+  display: grid;
+  grid-template-columns: minmax(220px, .85fr) minmax(420px, 1.4fr);
+  gap: 1.25rem;
+  align-items: center;
+  padding: 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+}
+.charge-review-main { display: flex; flex-direction: column; align-items: flex-start; gap: .55rem; min-width: 0; }
+.charge-review-person { display: flex; flex-direction: column; gap: .2rem; min-width: 0; }
+.charge-review-person strong { font-size: 1rem; overflow-wrap: anywhere; }
+.charge-review-person span, .charge-review-meta { color: var(--text-muted, #64748b); font-size: .86rem; }
+.charge-review-meta { display: grid; gap: .2rem; }
+.charge-review-meta b { color: var(--text, #334155); font-weight: 600; }
+.charge-entry-form {
+  display: grid;
+  grid-template-columns: minmax(130px, .7fr) minmax(160px, .9fr) auto;
+  align-items: end;
+  gap: .7rem;
+  min-width: 0;
+}
+.charge-entry-field { min-width: 0; }
+.charge-entry-field label { display: block; margin: 0 0 .35rem; font-size: .8rem; font-weight: 650; color: var(--text, #334155); }
+.charge-entry-field .form-control { width: 100%; min-width: 0; min-height: 42px; padding: .55rem .7rem; font-size: .92rem; }
+.charge-entry-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+.charge-entry-actions .btn { min-height: 42px; padding: .55rem .8rem; white-space: nowrap; font-size: .84rem; }
+.charge-empty-state { padding: 1.3rem; border: 1px dashed var(--border); border-radius: 10px; color: var(--text-muted, #64748b); text-align: center; }
+.tema-suave .charge-review-item { background: #18212b; border-color: #536273; }
+.tema-suave .charge-review-person span, .tema-suave .charge-review-meta { color: #b5c0cd; }
+.tema-suave .charge-review-meta b, .tema-suave .charge-entry-field label { color: #e5eaf0; }
+@media (max-width: 1050px) {
+  .charge-review-item { grid-template-columns: 1fr; gap: .9rem; }
+  .charge-entry-form { grid-template-columns: minmax(130px, .7fr) minmax(160px, .9fr); }
+  .charge-entry-actions { grid-column: 1 / -1; }
+}
+@media (max-width: 600px) {
+  .charge-control-card .card-header { align-items: flex-start; }
+  .charge-review-item { padding: .9rem; }
+  .charge-entry-form { grid-template-columns: 1fr; }
+  .charge-entry-actions { grid-column: auto; display: grid; grid-template-columns: 1fr; }
+  .charge-entry-actions .btn { width: 100%; }
+}
