@@ -313,7 +313,12 @@ function registerContadorRoutes(app, pool, helpers) {
           await client.query('ROLLBACK');
           return res.status(409).json({ error: 'El importe no coincide con el salario semanal calculado.' });
         }
-        cleanPayroll = { accrualId, weekStart: salary.weekStart, accountantAmount: Number(salary.accountantAmount)||0, adminAmount: Number(salary.adminAmount)||0, amount: total, concept: 'Retiro de salarios semanales' };
+        const account = typeof body.data?.account === 'string' ? body.data.account.trim().slice(0,80) : '';
+        if (!account) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'Selecciona la caja o cuenta de donde saldrá el retiro.' });
+        }
+        cleanPayroll = { accrualId, weekStart: salary.weekStart, accountantAmount: Number(salary.accountantAmount)||0, adminAmount: Number(salary.adminAmount)||0, amount: total, account, concept: 'Retiro de salarios semanales' };
       }
       if (['expense', 'electricity_bill', 'reserve', 'admin_salary_payment', 'payroll_payment', 'salary_accrual', 'salary_payment', 'cash_movement'].includes(body.type) && amount > 0) {
         const capital = await getFreeCapital(client);
