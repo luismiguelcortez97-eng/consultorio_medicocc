@@ -90,11 +90,11 @@ function registerContadorRoutes(app, pool, helpers) {
     let reserved = 0;
     for (const row of expenses.rows) {
       const amount = Number(row.data?.amount) || 0;
-      if (row.record_type === 'expense' || row.record_type === 'electricity_bill' || row.record_type === 'payroll_payment' || row.record_type === 'admin_salary_payment' || row.record_type === 'cash_out') spent += amount;
+      if (row.record_type === 'expense' || row.record_type === 'electricity_bill' || row.record_type === 'cash_movement' && row.data?.direction === 'out' || row.record_type === 'payroll_payment' || row.record_type === 'admin_salary_payment' || row.record_type === 'cash_out') spent += amount;
       if (row.record_type === 'reserve') reserved += amount;
       if (row.record_type === 'reversal') {
         const originalType = row.data?.originalType;
-        if (['expense', 'payroll_payment', 'admin_salary_payment', 'cash_out'].includes(originalType)) spent -= amount;
+        if (['expense', 'electricity_bill', 'payroll_payment', 'admin_salary_payment', 'cash_out'].includes(originalType) || originalType === 'cash_movement' && row.data?.originalDirection === 'out') spent -= amount;
         if (originalType === 'reserve') reserved -= amount;
       }
     }
@@ -237,6 +237,10 @@ function registerContadorRoutes(app, pool, helpers) {
           return res.status(400).json({ error: 'El importe de nómina no coincide con las horas registradas y la tarifa configurada.' });
         }
         cleanPayroll = { ...body.data, employeeId, employeeName: employee.rows[0].data?.nombre || employee.rows[0].data?.name || 'Empleado', hours, weekStart, amount: expected };
+      }
+      if (body.type === 'cash_movement' && !['in','out'].includes(body.data?.direction)) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Tipo de movimiento de caja no válido.' });
       }
       if (body.type === 'payroll_payment') {
         const attendanceId = Number(body.data?.attendanceId);
