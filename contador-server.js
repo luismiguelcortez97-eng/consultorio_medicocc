@@ -80,7 +80,7 @@ function registerContadorRoutes(app, pool, helpers) {
   async function getFreeCapital(client = pool) {
     const [income, expenses, settingsResult] = await Promise.all([
       getPaidIncome(client),
-      client.query("SELECT record_type, data FROM contador_records WHERE reversed_at IS NULL"),
+      client.query("SELECT id, record_type, data FROM contador_records WHERE reversed_at IS NULL"),
       client.query("SELECT setting_value FROM contador_settings WHERE setting_key='general'")
     ]);
     const settings = settingsResult.rows[0]?.setting_value || {};
@@ -95,16 +95,10 @@ function registerContadorRoutes(app, pool, helpers) {
     let payrollAccrued = 0;
     for (const row of activeRows) {
       const amount = Number(row.data?.amount) || 0;
-      if (['expense', 'electricity_bill', 'admin_salary_payment', 'cash_out'].includes(row.record_type) ||
+      if (['expense', 'electricity_bill', 'admin_salary_payment', 'payroll_payment', 'cash_out'].includes(row.record_type) ||
           row.record_type === 'cash_movement' && row.data?.direction === 'out') spent += amount;
       if (row.record_type === 'attendance' && !paidAttendance.has(String(row.id))) payrollAccrued += amount;
       if (row.record_type === 'reserve') reserved += amount;
-      if (row.record_type === 'reversal') {
-        const originalType = row.data?.originalType;
-        if (['expense', 'electricity_bill', 'admin_salary_payment', 'cash_out'].includes(originalType) ||
-            originalType === 'cash_movement' && row.data?.originalDirection === 'out') spent -= amount;
-        if (originalType === 'reserve') reserved -= amount;
-      }
     }
     return {
       initial, incomeTotal, spent, reserved, payrollAccrued,
