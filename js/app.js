@@ -3894,7 +3894,7 @@ function renderContadorPanel(data, view = 'inicio') {
   const missingCharges = allConsultas.filter(c => !c.cobroId && !c.cobroRevisionAnuladaAt && !cobroByConsulta.has(String(c.id)));
   const pendingCharges = allCobros.filter(c => c.tipo === 'medico' && c.status === 'pendiente');
   const dateTime = value => value && !Number.isNaN(new Date(value).getTime()) ? new Date(value).toLocaleString('es-MX') : '—';
-  const missingRows = missingCharges.sort((x,y)=>String(y.fecha||'').localeCompare(String(x.fecha||''))).map(c => '<tr><td>'+contadorEscape(dateTime(c.fecha))+'</td><td>'+contadorEscape(patientName(c.pacienteId))+'</td><td>'+contadorEscape(doctorName(c.medicoId))+'</td><td>'+contadorEscape(c.motivo||'Consulta médica')+'</td><td><span class="badge badge-warning">Sin cobro registrado</span></td><td><button type="button" class="btn btn-outline btn-sm" data-cancel-kind="consulta" data-cancel-id="'+Number(c.id)+'">Anular / marcar no cobrada</button></td></tr>').join('');
+  const missingRows = missingCharges.sort((x,y)=>String(y.fecha||'').localeCompare(String(x.fecha||''))).map(c => '<tr><td>'+contadorEscape(dateTime(c.fecha))+'</td><td>'+contadorEscape(patientName(c.pacienteId))+'</td><td>'+contadorEscape(doctorName(c.medicoId))+'</td><td>'+contadorEscape(c.motivo||'Consulta médica')+'</td><td><span class="badge badge-warning">Sin cobro registrado</span></td><td><form class="d-flex gap-2 flex-wrap align-items-center" data-create-consulta-cobro-form data-id="'+Number(c.id)+'"><input class="form-control" style="max-width:125px" type="number" name="amount" min="0.01" max="10000000" step="0.01" aria-label="Cantidad cobrada" placeholder="Cantidad" required><select class="form-control" name="method" aria-label="Medio de pago" required><option value="">Medio de pago</option><option value="Efectivo">Efectivo</option><option value="Tarjeta">Tarjeta</option><option value="Transferencia">Transferencia</option></select><button type="submit" class="btn btn-success btn-sm">Registrar y confirmar</button><button type="button" class="btn btn-outline btn-sm" data-cancel-kind="consulta" data-cancel-id="'+Number(c.id)+'">Marcar no cobrada</button></form></td></tr>').join('');
   const pendingRows = pendingCharges.sort((x,y)=>String(y.fecha||'').localeCompare(String(x.fecha||''))).map(c => {
     const consultation=consultById.get(String(c.consultaId||'')), patient=patientById.get(String(c.pacienteId||consultation?.pacienteId||''));
     return '<tr><td>'+contadorEscape(dateTime(c.fecha))+'</td><td>'+contadorEscape(patient?.nombre||patient?.name||c.referencia||'—')+'</td><td><form class="d-flex gap-2 flex-wrap align-items-center" data-confirm-cobro-form data-id="'+Number(c.id)+'"><input class="form-control" style="max-width:125px" type="number" name="amount" min="0.01" max="10000000" step="0.01" value="'+(Number(c.monto)>0?Number(c.monto).toFixed(2):'')+'" aria-label="Cantidad realmente cobrada" placeholder="Cantidad" required><select class="form-control" name="method" aria-label="Medio de pago" required><option value="">Medio de pago</option><option value="Efectivo">Efectivo</option><option value="Tarjeta">Tarjeta</option><option value="Transferencia">Transferencia</option></select><button type="submit" class="btn btn-success btn-sm">Guardar y confirmar</button><button type="button" class="btn btn-outline btn-sm" data-cancel-kind="cobro" data-cancel-id="'+Number(c.id)+'">Anular cobro</button></form></td><td><span class="badge badge-warning">Pendiente</span></td></tr>';
@@ -3949,6 +3949,23 @@ function renderContadorPanel(data, view = 'inicio') {
   area.innerHTML = '<div class="d-flex gap-2 flex-wrap mb-3">'+buttonHtml+'</div>'+viewHtml;
   area.querySelectorAll('[data-contador-view]').forEach(btn=>btn.addEventListener('click',()=>renderContadorPanel(data,btn.dataset.contadorView)));
   area.querySelector('[data-contador-refresh]')?.addEventListener('click',renderContador);
+  area.querySelectorAll('[data-create-consulta-cobro-form]').forEach(form=>form.addEventListener('submit',async e=>{
+    e.preventDefault();
+    const consultaId=Number(form.dataset.id);
+    const amount=Number(form.elements.amount.value);
+    const method=form.elements.method.value;
+    if(!Number.isFinite(amount)||amount<=0||amount>10000000){alert('Ingresa una cantidad válida mayor que $0.');form.elements.amount.focus();return;}
+    if(!['Efectivo','Tarjeta','Transferencia'].includes(method)){alert('Selecciona un medio de pago válido.');form.elements.method.focus();return;}
+    if(!confirm('¿Registrar '+amount.toFixed(2)+' recibidos por '+method+' para esta consulta y confirmar el cobro?'))return;
+    const submit=form.querySelector('button[type="submit"]');
+    submit.disabled=true;
+    try{
+      await contadorRequest('/api/contador/cobros/registrar-desde-consulta',{method:'POST',body:JSON.stringify({consultaId,amount,method})});
+      alert('Cobro registrado y confirmado. Se reflejará en ingresos y Caja.');
+      const fresh=await contadorRequest('/api/contador/data');
+      renderContadorPanel(fresh,'control-cobros');
+    }catch(error){alert(error.message);submit.disabled=false;}
+  }));
   area.querySelectorAll('[data-confirm-cobro-form]').forEach(form=>form.addEventListener('submit',async e=>{
     e.preventDefault();
     const id=Number(form.dataset.id);
