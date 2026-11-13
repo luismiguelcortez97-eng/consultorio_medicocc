@@ -15,7 +15,8 @@ const APP = {
   tempConsulta: null, // for building consultation
   unlockedCobros: false,
   unlockedBalance: false,
-  personalAccessGranted: false
+  personalAccessGranted: false,
+  contadorUnlocked: false
 };
 
 // ========== INIT ==========
@@ -102,6 +103,7 @@ async function logout() {
   APP.currentRole = 'admin';
   APP.unlockedCobros = false;
   APP.unlockedBalance = false;
+  APP.contadorUnlocked = false;
   showLogin();
 }
 
@@ -114,7 +116,7 @@ function showApp() {
   aplicarTemaGuardado();
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
-  ['personal', 'empleados', 'balance'].forEach(function (module) {
+  ['personal', 'empleados', 'balance', 'contador'].forEach(function (module) {
     const item = document.querySelector('.nav-item[data-module="' + module + '"]');
     if (item) item.style.display = APP.currentRole === 'admin' ? 'flex' : 'none';
   });
@@ -195,7 +197,7 @@ async function navigateTo(module) {
     clearInterval(APP.chatTimer);
     APP.chatTimer = null;
   }
-  if (['personal', 'empleados', 'balance'].includes(module) && APP.currentRole !== 'admin') {
+  if (['personal', 'empleados', 'balance', 'contador'].includes(module) && APP.currentRole !== 'admin') {
     alert('Esta sección es exclusiva del administrador.');
     return;
   }
@@ -229,6 +231,7 @@ async function navigateTo(module) {
     estudios: 'Estudios de Laboratorio',
     cobros: 'Cobros y Ventas del Día',
     balance: 'Balance General',
+    contador: 'Contador',
     respaldos: 'Respaldos y Configuración'
   };
   document.getElementById('page-title').textContent = titles[module] || module;
@@ -242,7 +245,7 @@ async function navigateTo(module) {
     
       case 'dashboard': await renderDashboard(); break;
       case 'medicos': await renderMedicos(); break;
-      case 'configuracion': renderConfiguracion(); break;
+      case 'configuracion': await renderConfiguracion(); break;
       case 'pacientes': await renderPacientes(); break;
       case 'consultas': await renderConsultas(); break;
       case 'agenda': await renderAgenda(); break;
@@ -255,6 +258,7 @@ async function navigateTo(module) {
       case 'estudios': await renderEstudios(); break;
       case 'cobros': await renderCobros(); break;
       case 'balance': await renderBalance(); break;
+      case 'contador': await renderContador(); break;
       case 'respaldos': renderRespaldos(); break;
       case 'enfermeria': await renderEnfermeria(); break;
       default: area.innerHTML = '<p>Módulo no encontrado</p>';
@@ -2464,9 +2468,20 @@ function aplicarTemaGuardado() {
   aplicarTemaSuave(habilitado, false);
 }
 
-function renderConfiguracion() {
+async function renderConfiguracion() {
   const area = document.getElementById('content-area');
   const habilitado = document.body.classList.contains('tema-suave');
+  let contadorSettings = {};
+  let nipConfigured = false;
+  if (APP.currentRole === 'admin') {
+    try {
+      const response = await fetch('/api/contador/admin-config', { credentials: 'same-origin', cache: 'no-store' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo consultar la configuración del Contador.');
+      contadorSettings = data.settings || {};
+      nipConfigured = !!data.nipConfigured;
+    } catch (error) { console.error(error); }
+  }
   area.innerHTML = `
     <div class="card">
       <div class="card-header"><h3>Apariencia del programa</h3></div>
@@ -2479,9 +2494,73 @@ function renderConfiguracion() {
         <p class="text-muted mt-2">La preferencia se guarda en este navegador y se aplica al volver a entrar.</p>
       </div>
     </div>
+    ${APP.currentRole === 'admin' ? `
+    <div class="card mt-3">
+      <div class="card-header"><h3>Seguridad del Contador</h3></div>
+      <div class="card-body">
+        <p class="text-muted">La clave del Contador es independiente de tu contraseña administrativa. Por seguridad, solo puedes establecer una clave nueva; no se muestra la clave vigente.</p>
+        <p><strong>Estado:</strong> ${nipConfigured ? '<span class="badge badge-success">Clave configurada</span>' : '<span class="badge badge-warning">Falta configurar clave</span>'}</p>
+        <form id="contador-nip-config-form">
+          <div class="form-group"><label for="contador-nip-new">Nueva clave del Contador</label><input id="contador-nip-new" class="form-control" type="password" minlength="6" maxlength="32" autocomplete="new-password" required></div>
+          <div class="form-group"><label for="contador-nip-confirm">Confirmar nueva clave</label><input id="contador-nip-confirm" class="form-control" type="password" minlength="6" maxlength="32" autocomplete="new-password" required></div>
+          <button class="btn btn-primary" type="submit">Guardar clave</button>
+          <div id="contador-nip-config-status" class="mt-2" role="status"></div>
+        </form>
+      </div>
+    </div>
+    <div class="card mt-3">
+      <div class="card-header"><h3>Parámetros financieros del Contador</h3></div>
+      <div class="card-body">
+        <form id="contador-settings-form">
+          <div class="form-row">
+            <div class="form-group"><label for="contador-rent-setting">Renta mensual</label><input id="contador-rent-setting" class="form-control" type="number" min="0" step="0.01" value="${Number(contadorSettings.rentMonthly)||0}"></div>
+            <div class="form-group"><label for="contador-daily-pay">Salario por jornada de 8 horas</label><input id="contador-daily-pay" class="form-control" type="number" min="0" step="0.01" value="${Number(contadorSettings.salarioBaseDiario)||440}"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label for="contador-accountant-percent">Porcentaje semanal del Contador</label><input id="contador-accountant-percent" class="form-control" type="number" min="0" max="100" step="0.01" value="${Number(contadorSettings.salaryAccountantPercent)||0}"></div>
+            <div class="form-group"><label for="contador-admin-percent">Porcentaje semanal del administrador</label><input id="contador-admin-percent" class="form-control" type="number" min="0" max="100" step="0.01" value="${Number(contadorSettings.salaryAdminPercent)||0}"></div>
+          </div>
+          <button class="btn btn-primary" type="submit">Guardar parámetros financieros</button>
+          <div id="contador-settings-status" class="mt-2" role="status"></div>
+        </form>
+        <p class="text-muted mt-2">La luz se captura cada mes porque su importe cambia. Los salarios semanales se calculan sobre el capital libre disponible y solo pueden retirarse los días 14 y 30.</p>
+      </div>
+    </div>` : ''}
   `;
   document.getElementById('config-tema-suave').addEventListener('change', function (event) {
     aplicarTemaSuave(event.target.checked);
+  });
+  document.getElementById('contador-settings-form')?.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    const status = document.getElementById('contador-settings-status');
+    try {
+      const response = await fetch('/api/contador/admin-config', { method:'PUT', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body:JSON.stringify({
+        rentMonthly:Number(document.getElementById('contador-rent-setting').value),
+        salarioBaseDiario:Number(document.getElementById('contador-daily-pay').value),
+        salaryAccountantPercent:Number(document.getElementById('contador-accountant-percent').value),
+        salaryAdminPercent:Number(document.getElementById('contador-admin-percent').value),
+        capitalDistribution:contadorSettings.capitalDistribution||[],
+        authorizationNip:window.prompt('Para cambiar los porcentajes salariales, introduce la clave del Contador:')
+      })});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo guardar la configuración.');
+      status.className='alert alert-success mt-2'; status.textContent='Parámetros financieros guardados.';
+    } catch(error) { status.className='alert alert-danger mt-2'; status.textContent=error.message; }
+  });
+  document.getElementById('contador-nip-config-form')?.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    const nip = document.getElementById('contador-nip-new').value;
+    const confirm = document.getElementById('contador-nip-confirm').value;
+    const status = document.getElementById('contador-nip-config-status');
+    if (nip !== confirm) { status.className = 'alert alert-warning mt-2'; status.textContent = 'Las claves no coinciden.'; return; }
+    try {
+      const response = await fetch('/api/contador/nip', { method: 'PUT', credentials: 'same-origin', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ nip }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo guardar la clave.');
+      status.className = 'alert alert-success mt-2'; status.textContent = data.message;
+      document.getElementById('contador-nip-new').value = '';
+      document.getElementById('contador-nip-confirm').value = '';
+    } catch (error) { status.className = 'alert alert-danger mt-2'; status.textContent = error.message; }
   });
 }
 
@@ -3688,3 +3767,188 @@ function escEnf(valor) {
   const observer=new MutationObserver(function(records){records.forEach(function(r){r.addedNodes.forEach(function(n){if(n.nodeType===1){proteger(n);if(n.matches&&n.matches('input,textarea'))proteger(n.parentNode);}});});});
   observer.observe(document.documentElement,{childList:true,subtree:true});
 })();
+
+
+// ========== CONTADOR FINANCIERO ==========
+async function contadorRequest(path, options = {}) {
+  const response = await fetch(path, {
+    credentials: 'same-origin',
+    cache: 'no-store',
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'No se pudo completar la operación.');
+  return data;
+}
+function contadorMoney(value) {
+  return (Number(value) || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+}
+function contadorLocalDate(value = new Date()) {
+  const d = new Date(value);
+  return [d.getFullYear(), String(d.getMonth()+1).padStart(2,'0'), String(d.getDate()).padStart(2,'0')].join('-');
+}
+function contadorEscape(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+async function renderContador() {
+  const area = document.getElementById('content-area');
+  if (APP.currentRole !== 'admin') { area.innerHTML = '<div class="alert alert-danger">Acceso exclusivo para administradores.</div>'; return; }
+  if (!APP.contadorUnlocked) {
+    area.innerHTML = `
+      <div class="card" style="max-width:480px;margin:2rem auto">
+        <div class="card-header"><h3>Acceso al Contador</h3></div>
+        <div class="card-body">
+          <p class="text-muted">Esta área contiene información financiera y movimientos protegidos.</p>
+          <form id="contador-unlock-form">
+            <div class="form-group"><label for="contador-unlock-nip">Clave del Contador</label><input id="contador-unlock-nip" class="form-control" type="password" autocomplete="current-password" required></div>
+            <button class="btn btn-primary btn-block" type="submit">Entrar al Contador</button>
+            <div id="contador-unlock-status" class="mt-2" role="status"></div>
+          </form>
+        </div>
+      </div>`;
+    document.getElementById('contador-unlock-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const status = document.getElementById('contador-unlock-status');
+      try {
+        await contadorRequest('/api/contador/unlock', { method:'POST', body:JSON.stringify({nip:document.getElementById('contador-unlock-nip').value}) });
+        APP.contadorUnlocked = true;
+        await renderContador();
+      } catch (error) { status.className='alert alert-danger mt-2'; status.textContent=error.message; }
+    });
+    return;
+  }
+  try {
+    const data = await contadorRequest('/api/contador/data');
+    renderContadorPanel(data);
+  } catch (error) {
+    APP.contadorUnlocked = false;
+    area.innerHTML = '<div class="alert alert-warning">'+contadorEscape(error.message)+' <button class="btn btn-outline btn-sm" onclick="renderContador()">Volver a ingresar</button></div>';
+  }
+}
+function renderContadorPanel(data, view = 'inicio') {
+  const area = document.getElementById('content-area');
+  const records = data.records || [], cobros = (data.cobros || []).filter(c => c.status === 'pagado' && c.tipo === 'medico');
+  const settings = data.settings || {}, capital = data.capital || {};
+  const expenses = records.filter(r => (['expense','electricity_bill','payroll_payment','admin_salary_payment','salary_payment','cash_out'].includes(r.type) || r.type==='cash_movement' && r.data?.direction==='out') && !r.reversedAt);
+  const expenseTotal = expenses.reduce((s,r)=>s+(Number(r.data?.amount)||0),0);
+  const reserved = Number(capital.reserved)||0, free = Number(capital.free)||0;
+  const accountRecords = records.filter(r=>r.type==='account'&&!r.reversedAt);
+  const cashBalance = (name, initial=0) => {
+    let total=Number(initial)||0;
+    if(name==='Efectivo') total += cobros.filter(c=>c.metodoPago==='Efectivo').reduce((s,c)=>s+(Number(c.monto)||0),0);
+    if(name==='Electrónico') total += cobros.filter(c=>c.metodoPago==='Tarjeta').reduce((s,c)=>s+(Number(c.monto)||0),0);
+     if(name==='Transferencias por asignar') total += cobros.filter(c=>c.metodoPago==='Transferencia').reduce((s,c)=>s+(Number(c.monto)||0),0);
+    records.filter(r=>!r.reversedAt).forEach(r=>{
+      const amount=Number(r.data?.amount)||0;
+      if(r.type==='reversal') {
+        if(r.data?.originalAccount!==name) return;
+        if(r.data?.originalType==='cash_movement') total += r.data?.originalDirection==='out' ? amount : -amount;
+        else if(r.data?.originalType==='cash_transfer') {if(r.data?.originalFromAccount===name)total+=amount;if(r.data?.originalToAccount===name)total-=amount;}
+        else if(['expense','electricity_bill','payroll_payment','admin_salary_payment','salary_payment'].includes(r.data?.originalType)) total += amount;
+        return;
+      }
+      if(r.data?.account!==name) return;
+      if(r.type==='initial_capital') total += amount;
+      else if(r.type==='cash_transfer') {if(r.data?.fromAccount===name)total-=amount;if(r.data?.toAccount===name)total+=amount;}
+      else if(r.type==='cash_movement') total += r.data?.direction==='out' ? -amount : amount;
+      else if(['expense','electricity_bill','payroll_payment','admin_salary_payment','salary_payment'].includes(r.type)) total -= amount;
+    });;
+    return total;
+  };
+  const incomeTotal = cobros.reduce((s,c)=>s+(Number(c.monto)||0),0);
+  const patientById = new Map((data.pacientes||[]).map(p=>[String(p.id),p]));
+  const consultById = new Map((data.consultas||[]).map(c=>[String(c.id),c]));
+  const incomes = cobros.map(c=>{
+    const consultation = consultById.get(String(c.consultaId || c.consulta_id || ''));
+    const patient = patientById.get(String(c.pacienteId || consultation?.pacienteId || ''));
+    const date = c.cobradoAt || c.fecha;
+    const folio = c.folio || c.folioPaciente || patient?.folio || patient?.codigo || patient?.id || c.referencia || '—';
+    return { date, folio, amount:Number(c.monto)||0, method:c.metodoPago||'—', concept:'Consulta' };
+  }).sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
+  const today = contadorLocalDate();
+  const weekStart = new Date(); weekStart.setHours(0,0,0,0); weekStart.setDate(weekStart.getDate() - ((weekStart.getDay()+6)%7));
+  const month = today.slice(0,7), year = today.slice(0,4);
+  const sumWhere = fn => incomes.filter(x=>x.date && fn(new Date(x.date))).reduce((s,x)=>s+x.amount,0);
+  const daily = sumWhere(d=>contadorLocalDate(d)===today);
+  const weekly = sumWhere(d=>d>=weekStart && d<new Date(weekStart.getTime()+7*86400000));
+  const monthly = sumWhere(d=>contadorLocalDate(d).slice(0,7)===month);
+  const annual = sumWhere(d=>String(d.getFullYear())===year);
+  const buttons = [
+    ['inicio','Resumen'],['ingresos','Lista de ingresos'],['gastos','Gastos y egresos'],['nomina','Nómina'],['salarios','Salarios de administración'],['caja','Caja'],['balance','Balance'],['capital','Capital de administradores']
+  ];
+  const buttonHtml = buttons.map(([key,label])=>'<button type="button" class="btn '+(view===key?'btn-primary':'btn-outline')+' btn-sm" data-contador-view="'+key+'">'+label+'</button>').join(' ');
+  const incomeRows = incomes.map(x=>'<tr><td>'+contadorEscape(x.date?new Date(x.date).toLocaleDateString('es-MX'):'—')+'</td><td>'+contadorEscape(x.date?new Date(x.date).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}):'—')+'</td><td>'+contadorEscape(x.folio)+'</td><td>Consulta</td><td>'+contadorMoney(x.amount)+'</td><td>'+contadorEscape(x.method)+'</td></tr>').join('');
+  const paidAttendance = new Set(records.filter(r=>r.type==='payroll_payment' && !r.reversedAt).map(r=>String(r.data?.attendanceId)));
+  const paidSalary = new Map(); records.filter(r=>r.type==='salary_payment'&&!r.reversedAt).forEach(r=>{const k=String(r.data?.accrualId);if(!paidSalary.has(k))paidSalary.set(k,new Set());paidSalary.get(k).add(r.data?.person);});
+  const salaryRows = records.filter(r=>r.type==='salary_accrual' && !r.reversedAt).map(r=>{const paid=paidSalary.get(String(r.id))||new Set();const allowed=['14','30'].includes(today.slice(8,10));return '<tr><td>'+contadorEscape(r.data?.weekStart||'—')+'</td><td>'+contadorMoney(r.data?.accountantAmount)+' '+(paid.has('accountant')?'<span class="badge badge-success">Retirado</span>':'<button class="btn btn-primary btn-sm" data-salary-id="'+Number(r.id)+'" data-salary-person="accountant" '+(!allowed?'disabled title="Disponible los días 14 y 30"':'')+'>Retirar Contador</button>')+'</td><td>'+contadorMoney(r.data?.adminAmount)+' '+(paid.has('admin')?'<span class="badge badge-success">Retirado</span>':'<button class="btn btn-primary btn-sm" data-salary-id="'+Number(r.id)+'" data-salary-person="admin" '+(!allowed?'disabled title="Disponible los días 14 y 30"':'')+'>Retirar administrador</button>')+'</td><td>'+contadorMoney(r.data?.amount)+'</td></tr>';}).join('');
+  const payrollRows = records.filter(r=>r.type==='attendance' && !r.reversedAt).map(r=>'<tr><td>'+new Date(r.createdAt).toLocaleDateString('es-MX')+'</td><td>'+contadorEscape(r.data?.employeeName||'—')+'</td><td>'+contadorEscape(r.data?.hours||'—')+'</td><td>'+contadorMoney(r.data?.amount)+'</td><td>'+(paidAttendance.has(String(r.id))?'<span class="badge badge-success">Pagado</span>':'<button class="btn btn-primary btn-sm" data-payroll-id="'+Number(r.id)+'">Pagar con autorización</button>')+'</td></tr>').join('');
+  const recordRows = records.filter(r=>!r.reversedAt).map(r=>'<tr><td>'+new Date(r.createdAt).toLocaleString('es-MX')+'</td><td>'+contadorEscape(r.data?.concept||r.type)+'</td><td>'+contadorEscape(r.data?.category||r.type)+'</td><td>'+contadorMoney(r.data?.amount)+'</td><td>'+contadorEscape(r.createdBy)+'</td><td>'+(r.type==='reserve'?'Reservado':r.type==='expense'||r.type==='electricity_bill'||r.type==='payroll_payment'||r.type==='admin_salary_payment'||r.type==='salary_payment'?'Registrado':'Activo')+'</td></tr>').join('');
+  const viewHtml = view==='inicio' ? `
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-icon green">💵</div><div class="stat-info"><h4>${contadorMoney(daily)}</h4><p>Ingreso diario</p></div></div>
+      <div class="stat-card"><div class="stat-icon blue">📅</div><div class="stat-info"><h4>${contadorMoney(weekly)}</h4><p>Ingreso semanal</p></div></div>
+      <div class="stat-card"><div class="stat-icon purple">🗓️</div><div class="stat-info"><h4>${contadorMoney(monthly)}</h4><p>Ingreso mensual</p></div></div>
+      <div class="stat-card"><div class="stat-icon orange">📈</div><div class="stat-info"><h4>${contadorMoney(annual)}</h4><p>Ingreso anual</p></div></div>
+    </div>
+    <div class="card"><div class="card-header"><h3>Control financiero</h3></div><div class="card-body"><p><strong>Ingresos confirmados:</strong> ${contadorMoney(incomeTotal)}</p><p><strong>Gastos registrados:</strong> ${contadorMoney(expenseTotal)}</p><p><strong>Capital reservado:</strong> ${contadorMoney(reserved)}</p><p><strong>Capital libre calculado:</strong> ${contadorMoney(free)}</p><p class="text-muted">Los ingresos se obtienen de Cobros confirmados. Los registros pendientes no se consideran ingresos.</p><div class="d-flex gap-2 flex-wrap mt-3"><button type="button" class="btn btn-primary" data-contador-view="balance">Balance</button><button type="button" class="btn btn-outline" data-contador-view="caja">Caja</button></div></div></div>` :
+    view==='ingresos' ? `
+    <div class="card"><div class="card-header"><h3>Lista de ingresos confirmados</h3><button class="btn btn-outline btn-sm" data-contador-refresh>Actualizar</button></div><div class="card-body"><div class="table-responsive"><table><thead><tr><th>Fecha</th><th>Hora</th><th>Folio paciente</th><th>Motivo</th><th>Cobro</th><th>Medio</th></tr></thead><tbody>${incomeRows||'<tr><td colspan="6">Todavía no hay ingresos confirmados.</td></tr>'}</tbody></table></div></div></div>` :
+    view==='gastos' ? `
+    <div class="card"><div class="card-header"><h3>Gastos y egresos</h3></div><div class="card-body">
+      <form id="contador-expense-form"><div class="form-row"><div class="form-group"><label>Tipo</label><select id="ce-category" class="form-control"><option value="Material médico">Material médico</option><option value="Material de laboratorio">Material de laboratorio</option><option value="Limpieza">Limpieza</option><option value="Papelería">Papelería</option><option value="Mantenimiento">Mantenimiento</option><option value="Servicios">Servicios</option><option value="Renta">Renta</option><option value="Otro">Otro</option></select></div><div class="form-group"><label>Concepto</label><input id="ce-concept" class="form-control" required maxlength="120" placeholder="Descripción del egreso"></div><div class="form-group"><label>Importe</label><input id="ce-amount" class="form-control" type="number" min="0.01" step="0.01" required></div></div><div class="form-row"><div class="form-group"><label>Medio de salida</label><select id="ce-account" class="form-control"><option>Efectivo</option><option>Electrónico</option>${accountRecords.map(r=>'<option>'+contadorEscape(r.data?.name)+'</option>').join('')}</select></div><div class="form-group"><label>Fecha</label><input id="ce-date" class="form-control" type="date" value="${today}" required></div></div><button class="btn btn-primary" type="submit">Solicitar y autorizar egreso</button><div id="ce-status" class="mt-2"></div></form>
+      <hr><h4>Renta mensual</h4><p>Importe configurado: <strong>${contadorMoney(settings.rentMonthly)}</strong></p><button type="button" class="btn btn-outline btn-sm" data-contador-rent>Registrar renta de este mes</button>
+      <hr><h4>Recibo de luz</h4><form id="contador-light-form"><div class="form-row"><div class="form-group"><label>Mes</label><input id="cl-month" type="month" class="form-control" value="${today.slice(0,7)}" required></div><div class="form-group"><label>Importe del recibo</label><input id="cl-amount" type="number" min="0.01" step="0.01" class="form-control" required></div></div><button class="btn btn-outline" type="submit">Registrar recibo de luz</button><div id="cl-status" class="mt-2"></div></form>
+    </div></div><div class="card mt-3"><div class="card-header"><h3>Historial de egresos y movimientos</h3></div><div class="card-body"><div class="table-responsive"><table><thead><tr><th>Fecha</th><th>Concepto</th><th>Tipo</th><th>Importe</th><th>Autorizó</th><th>Estado</th></tr></thead><tbody>${recordRows||'<tr><td colspan="6">Sin movimientos.</td></tr>'}</tbody></table></div></div></div>` :
+    view==='salarios' ? `
+    <div class="card"><div class="card-header"><h3>Salarios semanales: Contador y administrador</h3></div><div class="card-body"><p>Los porcentajes se aplican al capital libre disponible al momento de calcular cada semana. El importe queda apartado para evitar comprometer dinero que no existe.</p><div class="stats-grid"><div class="stat-card"><div class="stat-info"><h4>${Number(settings.salaryAccountantPercent)||0}%</h4><p>Porcentaje del Contador</p></div></div><div class="stat-card"><div class="stat-info"><h4>${Number(settings.salaryAdminPercent)||0}%</h4><p>Porcentaje del administrador</p></div></div></div><p><strong>Capital libre actual:</strong> ${contadorMoney(free)}</p><p><strong>Próximo cálculo:</strong> genera una sola vez el cálculo de la semana (lunes). Los retiros se habilitan únicamente los días 14 y 30.</p><button class="btn btn-primary" type="button" id="contador-accrue-salaries">Calcular salarios de esta semana</button><div id="cs-status" class="mt-2"></div></div></div><div class="card mt-3"><div class="card-header"><h3>Historial de salarios</h3></div><div class="card-body"><div class="table-responsive"><table><thead><tr><th>Semana</th><th>Contador</th><th>Administrador</th><th>Total apartado</th></tr></thead><tbody>${salaryRows||'<tr><td colspan="4">Todavía no hay salarios calculados.</td></tr>'}</tbody></table></div></div></div>` :
+    view==='nomina' ? `
+    <div class="card"><div class="card-header"><h3>Nómina semanal</h3></div><div class="card-body"><p>Tarifa base configurada: <strong>${contadorMoney(settings.salarioBaseDiario||440)} por jornada de 8 horas</strong> (${contadorMoney((settings.salarioBaseDiario||440)/8)} por hora).</p><form id="contador-employee-form"><div class="form-row"><div class="form-group"><label>Empleado</label><select id="cp-employee" class="form-control">${(data.empleados||[]).map(e=>'<option value="'+Number(e.id)+'">'+contadorEscape(e.nombre||e.name||('Empleado '+e.id))+'</option>').join('')}</select></div><div class="form-group"><label>Semana (lunes)</label><input id="cp-week" class="form-control" type="date" value="${today}" required></div><div class="form-group"><label>Tipo de jornada</label><select id="cp-mode" class="form-control"><option value="full">Semana completa (6 jornadas)</option><option value="missed">Faltó un día (5 jornadas)</option><option value="manual">Horas manuales</option></select></div><div class="form-group"><label>Horas laboradas</label><input id="cp-hours" class="form-control" type="number" min="0" max="60" step="0.5" value="48" disabled></div></div><button class="btn btn-primary" type="submit">Calcular y registrar semana</button><div id="cp-status" class="mt-2"></div></form><p class="text-muted mt-2">La selección de semana completa o falta de un día se calcula sobre 6 jornadas de 8 horas. La nómina se registra como obligación; el pago efectivo requiere autorización del Contador.</p></div></div>
+    <div class="card mt-3"><div class="card-header"><h3>Historial de nómina</h3></div><div class="card-body"><div class="table-responsive"><table><thead><tr><th>Fecha</th><th>Empleado</th><th>Horas</th><th>Importe</th><th>Estado</th></tr></thead><tbody>${payrollRows||'<tr><td colspan="5">Sin registros de nómina.</td></tr>'}</tbody></table></div></div></div>` :
+    view==='caja' ? `
+    <div class="card"><div class="card-header"><h3>Caja y cuentas</h3></div><div class="card-body">
+      <p><strong>Efectivo disponible calculado:</strong> ${contadorMoney(cashBalance('Efectivo'))}</p>
+      <p><strong>Tarjetas / electrónico:</strong> ${contadorMoney(cashBalance('Electrónico'))}</p><p><strong>Transferencias recibidas (por asignar a banco):</strong> ${contadorMoney(cashBalance('Transferencias por asignar'))}</p>
+      ${accountRecords.map(r=>'<p><strong>'+contadorEscape(r.data?.bank)+' · '+contadorEscape(r.data?.name)+':</strong> '+contadorMoney(cashBalance(r.data?.name,r.data?.amount))+'</p>').join('')}
+      <form id="contador-account-form"><h4>Agregar cuenta bancaria</h4><div class="form-row"><div class="form-group"><label>Banco</label><input id="ca-bank" class="form-control" required maxlength="80"></div><div class="form-group"><label>Nombre identificador</label><input id="ca-name" class="form-control" required maxlength="80"></div><div class="form-group"><label>Saldo inicial</label><input id="ca-balance" class="form-control" type="number" min="0" step="0.01" value="0" required></div></div><button class="btn btn-outline" type="submit">Agregar cuenta</button><div id="ca-status" class="mt-2"></div></form>
+      <hr><h4>Registrar capital inicial</h4><form id="contador-initial-capital-form"><div class="form-row"><div class="form-group"><label>Importe de capital autorizado</label><input id="ci-amount" class="form-control" type="number" min="0.01" step="0.01" required></div><div class="form-group"><label>Depositar en</label><select id="ci-account" class="form-control"><option>Efectivo</option><option>Electrónico</option><option>Transferencias por asignar</option>${accountRecords.map(r=>'<option>'+contadorEscape(r.data?.name)+'</option>').join('')}</select></div></div><button class="btn btn-primary" type="submit">Registrar capital con autorización</button><div id="ci-status" class="mt-2"></div></form><hr><h4>Registrar entrada o salida de cuenta/caja</h4><form id="contador-cash-form"><div class="form-row"><div class="form-group"><label>Dirección</label><select id="cc-direction" class="form-control"><option value="in">Entrada</option><option value="out">Salida</option></select></div><div class="form-group"><label>Cuenta / medio</label><select id="cc-account" class="form-control"><option>Efectivo</option><option>Electrónico</option>${records.filter(r=>r.type==='account').map(r=>'<option>'+contadorEscape(r.data?.name)+'</option>').join('')}</select></div><div class="form-group"><label>Importe</label><input id="cc-amount" class="form-control" type="number" min="0.01" step="0.01" required></div><div class="form-group"><label>Concepto</label><input id="cc-concept" class="form-control" required maxlength="120"></div></div><button class="btn btn-primary" type="submit">Registrar movimiento</button><div id="cc-status" class="mt-2"></div></form>
+      <hr><h4>Traspasar dinero entre cuentas</h4><form id="contador-transfer-form"><div class="form-row"><div class="form-group"><label>Cuenta de origen</label><select id="ct-from" class="form-control"><option>Efectivo</option><option>Electrónico</option><option>Transferencias por asignar</option>${accountRecords.map(r=>'<option>'+contadorEscape(r.data?.name)+'</option>').join('')}</select></div><div class="form-group"><label>Cuenta de destino</label><select id="ct-to" class="form-control"><option>Efectivo</option><option>Electrónico</option><option>Transferencias por asignar</option>${accountRecords.map(r=>'<option>'+contadorEscape(r.data?.name)+'</option>').join('')}</select></div><div class="form-group"><label>Importe</label><input id="ct-amount" class="form-control" type="number" min="0.01" step="0.01" required></div></div><button class="btn btn-primary" type="submit">Autorizar traspaso</button><div id="ct-status" class="mt-2"></div></form><hr><h4>Cuentas registradas</h4>${accountRecords.map(r=>'<p><strong>'+contadorEscape(r.data?.bank)+' · '+contadorEscape(r.data?.name)+'</strong> — Saldo actual calculado: '+contadorMoney(cashBalance(r.data?.name,r.data?.amount))+'</p>').join('')||'<p class="text-muted">Todavía no agregas cuentas bancarias.</p>'}
+    </div></div>` :
+    view==='balance' ? `
+    <div class="card"><div class="card-header"><h3>Balance financiero actual</h3></div><div class="card-body"><div class="stats-grid"><div class="stat-card"><div class="stat-info"><h4>${contadorMoney(incomeTotal)}</h4><p>Ingresos confirmados acumulados</p></div></div><div class="stat-card"><div class="stat-info"><h4>${contadorMoney(expenseTotal)}</h4><p>Gastos y salidas registradas</p></div></div><div class="stat-card"><div class="stat-info"><h4>${contadorMoney(reserved)}</h4><p>Capital reservado</p></div></div><div class="stat-card"><div class="stat-info"><h4>${contadorMoney(free)}</h4><p>Capital libre</p></div></div></div><p><strong>Capital inicial:</strong> ${contadorMoney(capital.initial)}</p><p><strong>Capital disponible calculado:</strong> ${contadorMoney(free)}</p><p class="text-muted">El saldo operativo se calcula con capital inicial + cobros confirmados − egresos autorizados − reservas.</p></div></div>` :
+    view==='capital' ? `
+    <div class="card"><div class="card-header"><h3>Capital de administradores</h3></div><div class="card-body"><p><strong>Capital libre susceptible de reserva:</strong> ${contadorMoney(free)}</p><form id="contador-reserve-form"><div id="cr-lines">${(settings.capitalDistribution||[]).map((x,i)=>'<div class="form-row"><div class="form-group"><label>Administrador</label><input class="form-control cr-name" value="'+contadorEscape(x.name)+'" maxlength="80" required></div><div class="form-group"><label>Porcentaje</label><input class="form-control cr-percent" type="number" min="0" max="100" step="0.01" value="'+Number(x.percent||0)+'" required></div></div>').join('')||'<div class="form-row"><div class="form-group"><label>Administrador</label><input class="form-control cr-name" value="" maxlength="80" required></div><div class="form-group"><label>Porcentaje</label><input class="form-control cr-percent" type="number" min="0" max="100" step="0.01" value="0" required></div></div>'}</div><button class="btn btn-outline btn-sm" type="button" id="cr-add">Agregar administrador</button><button class="btn btn-primary" type="submit">Guardar porcentajes y solicitar reserva</button><div id="cr-status" class="mt-2"></div></form><p class="text-muted mt-2">La reserva requiere la clave del Contador y, una vez autorizada, se excluye del dinero libre para gastos.</p></div></div>` : '';
+  area.innerHTML = '<div class="d-flex gap-2 flex-wrap mb-3">'+buttonHtml+'</div>'+viewHtml;
+  area.querySelectorAll('[data-contador-view]').forEach(btn=>btn.addEventListener('click',()=>renderContadorPanel(data,btn.dataset.contadorView)));
+  area.querySelector('[data-contador-refresh]')?.addEventListener('click',renderContador);
+  area.querySelectorAll('[data-salary-id]').forEach(btn=>btn.addEventListener('click',async()=>{const accrual=records.find(r=>String(r.id)===btn.dataset.salaryId);if(!accrual)return;const person=btn.dataset.salaryPerson;const amount=person==='accountant'?Number(accrual.data?.accountantAmount)||0:Number(accrual.data?.adminAmount)||0;const options=['Efectivo','Electrónico',...accountRecords.map(r=>r.data?.name).filter(Boolean)];const account=window.prompt('¿De qué caja o cuenta saldrá el retiro?\\n'+options.join(' / '),'Efectivo');if(account===null)return;if(!options.includes(account)){alert('Selecciona una caja o cuenta registrada.');return;}await contadorSubmitRecord('salary_payment',{accrualId:accrual.id,person,amount,account},'Autorizar retiro salarial','',true);}));
+   area.querySelector('#contador-accrue-salaries')?.addEventListener('click',async()=>{const d=new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()-((d.getDay()+6)%7));const weekStart=contadorLocalDate(d);await contadorSubmitRecord('salary_accrual',{weekStart},'Autorizar cálculo y apartado de salarios semanales','cs-status',true);});
+   area.querySelectorAll('[data-payroll-id]').forEach(btn=>btn.addEventListener('click',async()=>{const attendance=records.find(r=>String(r.id)===btn.dataset.payrollId);if(!attendance)return;const options=['Efectivo','Electrónico',...accountRecords.map(r=>r.data?.name).filter(Boolean)];const account=window.prompt('¿De qué caja o cuenta saldrá el pago?\\n'+options.join(' / '),'Efectivo');if(account===null)return;if(!options.includes(account)){alert('Selecciona una caja o cuenta registrada.');return;}await contadorSubmitRecord('payroll_payment',{attendanceId:attendance.id,amount:Number(attendance.data?.amount)||0,employeeId:attendance.data?.employeeId,employeeName:attendance.data?.employeeName,account,concept:'Pago semanal de nómina'},'Autorizar pago de nómina','',true);}));
+  area.querySelector('[data-contador-rent]')?.addEventListener('click',()=>{const concept='Renta '+today.slice(0,7);if(records.some(r=>r.type==='expense'&&!r.reversedAt&&r.data?.concept===concept)){alert('La renta de este mes ya fue registrada.');return;}const amount=Number(settings.rentMonthly)||0;if(amount<=0){alert('Configura primero el importe de renta en Configuración.');return;}contadorSubmitRecord('expense',{concept,category:'Renta',amount,date:today,account:'Efectivo'},'Autorizar registro de renta','');});
+  document.getElementById('contador-expense-form')?.addEventListener('submit',async e=>{e.preventDefault();await contadorSubmitRecord('expense',{category:document.getElementById('ce-category').value,concept:document.getElementById('ce-concept').value.trim(),amount:Number(document.getElementById('ce-amount').value),date:document.getElementById('ce-date').value,account:document.getElementById('ce-account').value},'Autorizar egreso', 'ce-status');});
+  document.getElementById('contador-light-form')?.addEventListener('submit',async e=>{e.preventDefault();const account=window.prompt('¿De qué caja o cuenta se pagó el recibo?','Efectivo');if(!account)return;await contadorSubmitRecord('electricity_bill',{category:'Luz',concept:'Recibo de luz '+document.getElementById('cl-month').value,month:document.getElementById('cl-month').value,amount:Number(document.getElementById('cl-amount').value),account},'Autorizar recibo de luz','cl-status');});
+  document.getElementById('contador-employee-form')?.addEventListener('submit',async e=>{
+    e.preventDefault();const mode=document.getElementById('cp-mode').value;const hours=mode==='full'?48:mode==='missed'?40:Number(document.getElementById('cp-hours').value);
+    const employee=(data.empleados||[]).find(x=>String(x.id)===document.getElementById('cp-employee').value);const amount=Math.round(hours*(Number(settings.salarioBaseDiario)||440)/8*100)/100;
+    await contadorSubmitRecord('attendance',{employeeId:employee?.id,employeeName:employee?.nombre||employee?.name||'Empleado',weekStart:document.getElementById('cp-week').value,hours,amount,mode},'Registrar cálculo de nómina','cp-status',false);
+  });
+  document.getElementById('cp-mode')?.addEventListener('change',e=>{const h=document.getElementById('cp-hours');h.disabled=e.target.value!=='manual';if(e.target.value==='full')h.value=48;else if(e.target.value==='missed')h.value=40;});
+  document.getElementById('contador-account-form')?.addEventListener('submit',async e=>{e.preventDefault();const amount=Number(document.getElementById('ca-balance').value);await contadorSubmitRecord('account',{bank:document.getElementById('ca-bank').value.trim(),name:document.getElementById('ca-name').value.trim(),amount},'Autorizar saldo inicial de cuenta','ca-status',amount>0);});
+  document.getElementById('contador-cash-form')?.addEventListener('submit',async e=>{e.preventDefault();const direction=document.getElementById('cc-direction').value;await contadorSubmitRecord('cash_movement',{direction,account:document.getElementById('cc-account').value,amount:Number(document.getElementById('cc-amount').value),concept:document.getElementById('cc-concept').value.trim()},direction==='out'?'Autorizar salida de caja':'Registrar entrada de caja','cc-status',direction==='out');});
+  document.getElementById('cr-add')?.addEventListener('click',()=>{const box=document.getElementById('cr-lines');const row=document.createElement('div');row.className='form-row';row.innerHTML='<div class="form-group"><label>Administrador</label><input class="form-control cr-name" maxlength="80" required></div><div class="form-group"><label>Porcentaje</label><input class="form-control cr-percent" type="number" min="0" max="100" step="0.01" value="0" required></div>';box.appendChild(row);});
+  document.getElementById('contador-reserve-form')?.addEventListener('submit',async e=>{
+    e.preventDefault();const names=[...document.querySelectorAll('.cr-name')],percents=[...document.querySelectorAll('.cr-percent')];const distribution=names.map((x,i)=>({name:x.value.trim(),percent:Number(percents[i].value)}));const total=distribution.reduce((s,x)=>s+x.percent,0);
+    const status=document.getElementById('cr-status');if(total>100.0001){status.className='alert alert-warning mt-2';status.textContent='Los porcentajes no pueden superar 100%.';return;}
+    try{await contadorRequest('/api/contador/admin-config',{method:'PUT',body:JSON.stringify({...settings,capitalDistribution:distribution})});const reserve=free*total/100;if(reserve>0)await contadorSubmitRecord('reserve',{amount:reserve,distribution,concept:'Reserva de capital de administradores'},'Autorizar reserva de capital','cr-status',true);else{status.className='alert alert-success mt-2';status.textContent='Porcentajes guardados. No hay importe que reservar.';await renderContador();}}catch(error){status.className='alert alert-danger mt-2';status.textContent=error.message;}
+  });
+}
+async function contadorSubmitRecord(type, data, promptText, statusId, requireNip = true) {
+  let authorizationNip = '';
+  if (requireNip) { authorizationNip = window.prompt(promptText+' — introduce la clave del Contador:'); if (authorizationNip === null) return; }
+  const status = statusId ? document.getElementById(statusId) : null;
+  try {
+    await contadorRequest('/api/contador/records',{method:'POST',body:JSON.stringify({type,data,authorizationNip})});
+    if(status){status.className='alert alert-success mt-2';status.textContent='Movimiento registrado correctamente.';}
+    await renderContador();
+  } catch(error) { if(status){status.className='alert alert-danger mt-2';status.textContent=error.message;} else alert(error.message); }
+}

@@ -5,6 +5,7 @@ const rateLimit = require('express-rate-limit');
 const { Pool } = require('pg');
 const crypto = require('crypto');
 const path = require('path');
+const { initContadorDb, registerContadorRoutes } = require('./contador-server');
 const { initMembershipDb, registerMembershipRoutes } = require('./membership-server');
 const { publicAppointmentSlots, appointmentConflicts, isMembershipActive, membershipMatchesPerson } = require('./appointment-logic');
 
@@ -106,6 +107,7 @@ async function initDb() {
     'CREATE INDEX IF NOT EXISTS app_records_store_idx ON app_records(store)'
   );
   await initMembershipDb(pool);
+  await initContadorDb(pool);
 }
 
 function sign(value) {
@@ -277,6 +279,8 @@ function requireAdmin(req, res, next) {
   }
   next();
 }
+
+registerContadorRoutes(app, pool, { requireAuth, requireAdmin, createFinanceToken, validFinanceToken, isProd });
 
 app.post('/api/auth/login', loginLimiter, async (req, res, next) => {
   try {
@@ -1307,7 +1311,7 @@ const runMembershipNotifications = registerMembershipRoutes(app, pool, { require
 
 app.use((req, res, next) => {
   if (
-    /^\/(server\.js|membership-server\.js|package(?:-lock)?\.json|README\.md|render\.yaml|\.env(?:\.example)?|\.gitignore)(?:$|\?)/i.test(
+    /^\/(server\.js|membership-server\.js|contador-server\.js|package(?:-lock)?\.json|README\.md|render\.yaml|\.env(?:\.example)?|\.gitignore)(?:$|\?)/i.test(
       req.path
     )
   ) {
