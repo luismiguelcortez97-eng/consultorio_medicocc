@@ -126,11 +126,13 @@ function registerContadorRoutes(app, pool, helpers) {
     for (const row of rowsResult.rows) {
       const data = row.data || {}, amount = Number(data.amount)||0;
       if (row.record_type === 'account' && data.name === account) balance += amount;
+      else if (row.record_type === 'cash_transfer') { if(data.fromAccount===account) balance-=amount; if(data.toAccount===account) balance+=amount; }
       else if (row.record_type === 'initial_capital' && data.account === account) balance += amount;
       else if (row.record_type === 'cash_movement' && data.account === account) balance += data.direction === 'out' ? -amount : amount;
       else if (['expense','electricity_bill','payroll_payment','admin_salary_payment','salary_payment'].includes(row.record_type) && data.account === account) balance -= amount;
       else if (row.record_type === 'reversal' && data.originalAccount === account) {
         if (data.originalType === 'cash_movement') balance += data.originalDirection === 'out' ? amount : -amount;
+        else if (data.originalType === 'cash_transfer') { if(data.originalFromAccount===account) balance+=amount; if(data.originalToAccount===account) balance-=amount; }
         else if (['expense','electricity_bill','payroll_payment','admin_salary_payment','salary_payment'].includes(data.originalType)) balance += amount;
       }
     }
@@ -230,19 +232,19 @@ function registerContadorRoutes(app, pool, helpers) {
 
   app.post('/api/contador/records', financeAccess, async (req, res, next) => {
     const body = req.body || {};
-    const allowed = new Set(['expense', 'electricity_bill', 'employee', 'attendance', 'account', 'cash_movement', 'reserve', 'admin_salary_payment', 'payroll_payment', 'salary_config', 'salary_accrual', 'salary_payment', 'initial_capital']);
+    const allowed = new Set(['expense', 'electricity_bill', 'employee', 'attendance', 'account', 'cash_movement', 'reserve', 'admin_salary_payment', 'payroll_payment', 'salary_config', 'salary_accrual', 'salary_payment', 'initial_capital', 'cash_transfer']);
     if (!allowed.has(body.type)) return res.status(400).json({ error: 'Tipo de registro no válido.' });
     const amount = body.data?.amount == null ? null : Number(body.data.amount);
     if (amount != null && (!Number.isFinite(amount) || amount < 0 || amount > 100000000)) {
       return res.status(400).json({ error: 'Importe inválido.' });
     }
     const requiresNip = ['expense', 'electricity_bill', 'reserve', 'admin_salary_payment', 'payroll_payment', 'salary_accrual', 'salary_payment', 'initial_capital'].includes(body.type) || (body.type === 'account' && amount > 0) ||
-      (body.type === 'cash_movement' && body.data?.direction === 'out');
+      (body.type === 'cash_movement' && body.data?.direction === 'out') || body.type === 'cash_transfer';
     const client = await pool.connect();
     let cleanPayroll = body.data || {};
     try {
       await client.query('BEGIN');
-      if (['expense', 'electricity_bill', 'reserve', 'admin_salary_payment', 'payroll_payment', 'salary_accrual', 'salary_payment', 'initial_capital', 'cash_movement', 'account'].includes(body.type)) {
+      if (['expense', 'electricity_bill', 'reserve', 'admin_salary_payment', 'payroll_payment', 'salary_accrual', 'salary_payment', 'initial_capital', 'cash_movement', 'account', 'cash_transfer'].includes(body.type)) {
         await client.query("SELECT pg_advisory_xact_lock(hashtext('consultorio_contador_ledger'))");
       }
       if (requiresNip && !(await checkNip(body.authorizationNip))) {
@@ -301,6 +303,28 @@ function registerContadorRoutes(app, pool, helpers) {
           return res.status(400).json({ error: 'El importe de nómina no coincide con las horas registradas y la tarifa configurada.' });
         }
         cleanPayroll = { ...body.data, employeeId, employeeName: employee.rows[0].data?.nombre || employee.rows[0].data?.name || 'Empleado', hours, weekStart, amount: expected };
+      }
+      if (body.type === 'cash_transfer') {
+        const fromAccount = typeof body.data?.fromAccount === 'string' ? body.data.fromAccount.trim().slice(0,80) : '';
+        const toAccount = typeof body.data?.toAccount === 'string' ? body.data.toAccount.trim().slice(0,80) : '';
+        if (!amount || amount <= 0 || !fromAccount || !toAccount || fromAccount === toAccount) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'Selecciona dos cuentas distintas y un importe válido.' });
+        }
+        for (const account of [fromAccount,toAccount]) {
+          const builtin = ['Efectivo','Electrónico','Transferencias por asignar'].includes(account);
+          const custom = (await client.query("SELECT id FROM contador_records WHERE record_type='account' AND reversed_at IS NULL AND data->>'name'=$1", [account])).rowCount > 0;
+          if (!builtin && !custom) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Una de las cuentas seleccionadas no existe.' });
+          }
+        }
+        const available = await getAccountBalance(fromAccount, client);
+        if (amount > available) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({ error: 'La cuenta de origen no tiene saldo suficiente.' });
+        }
+        cleanPayroll = { fromAccount, toAccount, amount, concept: 'Traspaso entre cuentas' };
       }
       if (body.type === 'cash_movement' && !['in','out'].includes(body.data?.direction)) {
         await client.query('ROLLBACK');
@@ -442,7 +466,7 @@ function registerContadorRoutes(app, pool, helpers) {
       if (!original.rowCount || original.rows[0].reversed_at) return res.status(404).json({ error: 'Movimiento no disponible para reversión.' });
       const result = await pool.query(
         'INSERT INTO contador_records(record_type,data,created_by,reversed_by) VALUES($1,$2,$3,$4) RETURNING id,record_type AS type,data,created_at AS "createdAt"',
-        ['reversal', { originalId: id, originalType: original.rows[0].record_type, amount: Number(original.rows[0].data?.amount) || 0, originalDirection: original.rows[0].data?.direction || null, originalAccount: original.rows[0].data?.account || null, reason }, req.session?.displayName || req.session?.username || 'Administrador', id]
+        ['reversal', { originalId: id, originalType: original.rows[0].record_type, amount: Number(original.rows[0].data?.amount) || 0, originalDirection: original.rows[0].data?.direction || null, originalAccount: original.rows[0].data?.account || null, originalFromAccount: original.rows[0].data?.fromAccount || null, originalToAccount: original.rows[0].data?.toAccount || null, reason }, req.session?.displayName || req.session?.username || 'Administrador', id]
       );
       await pool.query('UPDATE contador_records SET reversed_at=NOW() WHERE id=$1', [id]);
       res.status(201).json(result.rows[0]);
