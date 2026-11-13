@@ -17,22 +17,22 @@ function verifyNipHash(nip, salt, storedHash) {
 }
 
 async function initContadorDb(pool) {
-  await pool.query(\`
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS contador_settings (
       setting_key TEXT PRIMARY KEY,
       setting_value JSONB NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
-  \`);
-  await pool.query(\`
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS contador_credentials (
       credential_key TEXT PRIMARY KEY,
       password_hash TEXT NOT NULL,
       password_salt TEXT NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
-  \`);
-  await pool.query(\`
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS contador_records (
       id BIGSERIAL PRIMARY KEY,
       record_type TEXT NOT NULL,
@@ -42,7 +42,7 @@ async function initContadorDb(pool) {
       reversed_by BIGINT REFERENCES contador_records(id),
       reversed_at TIMESTAMPTZ
     )
-  \`);
+  `);
   await pool.query('CREATE INDEX IF NOT EXISTS contador_records_type_idx ON contador_records(record_type, created_at DESC)');
 }
 
