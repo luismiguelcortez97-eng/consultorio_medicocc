@@ -3848,7 +3848,8 @@ function renderContadorPanel(data, view = 'inicio') {
         return;
       }
       if(r.data?.account!==name) return;
-      if(r.type==='cash_movement') total += r.data?.direction==='out' ? -amount : amount;
+      if(r.type==='initial_capital') total += amount;
+      else if(r.type==='cash_movement') total += r.data?.direction==='out' ? -amount : amount;
       else if(['expense','electricity_bill','payroll_payment','admin_salary_payment','salary_payment'].includes(r.type)) total -= amount;
     });;
     return total;
