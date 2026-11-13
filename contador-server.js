@@ -380,6 +380,29 @@ function registerContadorRoutes(app, pool, helpers) {
         }
         cleanPayroll = { accrualId, person, weekStart: salary.weekStart, amount: total, account, concept: person === 'accountant' ? 'Retiro semanal del Contador' : 'Retiro semanal del administrador' };
       }
+      if (['expense','electricity_bill','payroll_payment','salary_payment','admin_salary_payment','cash_movement','initial_capital'].includes(body.type)) {
+        const account = typeof cleanPayroll?.account === 'string' ? cleanPayroll.account : typeof body.data?.account === 'string' ? body.data.account : '';
+        const builtin = ['Efectivo','Electrónico','Transferencias por asignar'].includes(account);
+        const custom = account && (await client.query("SELECT id FROM contador_records WHERE record_type='account' AND reversed_at IS NULL AND data->>'name'=$1", [account])).rowCount > 0;
+        if (!account || (!builtin && !custom)) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'Selecciona una caja o cuenta bancaria registrada.' });
+        }
+        if (body.type !== 'initial_capital' && body.type !== 'cash_movement' && amount > 0) {
+          const available = await getAccountBalance(account, client);
+          if (amount > available) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ error: 'El saldo de esa caja o cuenta es insuficiente para este movimiento.' });
+          }
+        }
+        if (body.type === 'cash_movement' && body.data?.direction === 'out' && amount > 0) {
+          const available = await getAccountBalance(account, client);
+          if (amount > available) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ error: 'El saldo de esa caja o cuenta es insuficiente.' });
+          }
+        }
+      }
       if (['expense', 'electricity_bill', 'reserve', 'admin_salary_payment', 'payroll_payment', 'salary_accrual', 'salary_payment', 'cash_movement'].includes(body.type) && amount > 0) {
         const capital = await getFreeCapital(client);
         if (['expense', 'electricity_bill', 'admin_salary_payment', 'payroll_payment', 'salary_payment'].includes(body.type) ||
