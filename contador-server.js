@@ -266,7 +266,7 @@ function registerContadorRoutes(app, pool, helpers) {
       }
       if (body.type === 'salary_accrual') {
         const weekStart = typeof body.data?.weekStart === 'string' ? body.data.weekStart : '';
-        if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(weekStart)) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
           await client.query('ROLLBACK');
           return res.status(400).json({ error: 'Selecciona una semana válida.' });
         }
