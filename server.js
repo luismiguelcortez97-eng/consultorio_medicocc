@@ -280,6 +280,18 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// Comprobación pública de disponibilidad utilizada por la pantalla de inicio de sesión.
+app.get('/api/health', async (_req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.set('Cache-Control', 'no-store');
+    res.json({ ok: true, database: 'connected' });
+  } catch (error) {
+    console.error('Health check de PostgreSQL falló:', error.message);
+    res.status(503).json({ ok: false, error: 'Base de datos no disponible.' });
+  }
+});
+
 registerContadorRoutes(app, pool, { requireAuth, requireAdmin, createFinanceToken, validFinanceToken, isProd });
 
 app.post('/api/auth/login', loginLimiter, async (req, res, next) => {
