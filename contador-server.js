@@ -210,7 +210,7 @@ function registerContadorRoutes(app, pool, helpers) {
     try {
       const [recordsResult, cobrosResult, consultasResult, pacientesResult, empleadosResult, settingsResult, capital] = await Promise.all([
         pool.query('SELECT id, record_type AS type, data, created_by AS "createdBy", created_at AS "createdAt", reversed_at AS "reversedAt" FROM contador_records ORDER BY created_at DESC'),
-        pool.query("SELECT data FROM app_records WHERE store='cobros' ORDER BY created_at DESC"),
+        pool.query("SELECT data FROM app_records WHERE store='cobros'"),
         pool.query("SELECT data FROM app_records WHERE store='consultas'"),
         pool.query("SELECT data FROM app_records WHERE store='pacientes'"),
         pool.query("SELECT data FROM app_records WHERE store='empleados'"),
