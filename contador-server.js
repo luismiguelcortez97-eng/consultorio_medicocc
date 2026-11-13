@@ -86,7 +86,8 @@ function registerContadorRoutes(app, pool, helpers) {
     const settings = settingsResult.rows[0]?.setting_value || {};
     const legacyInitial = Number(settings.capitalInicial) || 0;
     const approvedInitial = expenses.rows.filter(row => row.record_type === 'initial_capital').reduce((sum, row) => sum + (Number(row.data?.amount) || 0), 0);
-    const initial = legacyInitial + approvedInitial;
+    const accountOpeningCapital = expenses.rows.filter(row => row.record_type === 'account').reduce((sum,row)=>sum+(Number(row.data?.amount)||0),0);
+    const initial = legacyInitial + approvedInitial + accountOpeningCapital;
     const incomeTotal = income.reduce((sum, c) => sum + (Number(c.monto) || 0), 0);
     let spent = 0;
     let reserved = 0;
@@ -235,13 +236,13 @@ function registerContadorRoutes(app, pool, helpers) {
     if (amount != null && (!Number.isFinite(amount) || amount < 0 || amount > 100000000)) {
       return res.status(400).json({ error: 'Importe inválido.' });
     }
-    const requiresNip = ['expense', 'electricity_bill', 'reserve', 'admin_salary_payment', 'payroll_payment', 'salary_accrual', 'salary_payment', 'initial_capital'].includes(body.type) ||
+    const requiresNip = ['expense', 'electricity_bill', 'reserve', 'admin_salary_payment', 'payroll_payment', 'salary_accrual', 'salary_payment', 'initial_capital'].includes(body.type) || (body.type === 'account' && amount > 0) ||
       (body.type === 'cash_movement' && body.data?.direction === 'out');
     const client = await pool.connect();
     let cleanPayroll = body.data || {};
     try {
       await client.query('BEGIN');
-      if (['expense', 'electricity_bill', 'reserve', 'admin_salary_payment', 'payroll_payment', 'salary_accrual', 'salary_payment', 'initial_capital', 'cash_movement'].includes(body.type)) {
+      if (['expense', 'electricity_bill', 'reserve', 'admin_salary_payment', 'payroll_payment', 'salary_accrual', 'salary_payment', 'initial_capital', 'cash_movement', 'account'].includes(body.type)) {
         await client.query("SELECT pg_advisory_xact_lock(hashtext('consultorio_contador_ledger'))");
       }
       if (requiresNip && !(await checkNip(body.authorizationNip))) {
