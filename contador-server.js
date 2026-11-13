@@ -208,11 +208,12 @@ function registerContadorRoutes(app, pool, helpers) {
 
   app.get('/api/contador/data', financeAccess, async (_req, res, next) => {
     try {
-      const [recordsResult, cobrosResult, consultasResult, pacientesResult, empleadosResult, settingsResult, capital] = await Promise.all([
+      const [recordsResult, cobrosResult, consultasResult, pacientesResult, medicosResult, empleadosResult, settingsResult, capital] = await Promise.all([
         pool.query('SELECT id, record_type AS type, data, created_by AS "createdBy", created_at AS "createdAt", reversed_at AS "reversedAt" FROM contador_records ORDER BY created_at DESC'),
         pool.query("SELECT data FROM app_records WHERE store='cobros'"),
         pool.query("SELECT data FROM app_records WHERE store='consultas'"),
         pool.query("SELECT data FROM app_records WHERE store='pacientes'"),
+        pool.query("SELECT data FROM app_records WHERE store='medicos'"),
         pool.query("SELECT data FROM app_records WHERE store='empleados'"),
         pool.query("SELECT setting_value FROM contador_settings WHERE setting_key='general'"),
         getFreeCapital()
@@ -223,6 +224,7 @@ function registerContadorRoutes(app, pool, helpers) {
         cobros: cobrosResult.rows.map(row => row.data),
         consultas: consultasResult.rows.map(row => row.data),
         pacientes: pacientesResult.rows.map(row => row.data),
+        medicos: medicosResult.rows.map(row => row.data),
         empleados: empleadosResult.rows.map(row => row.data),
         settings: settingsResult.rows[0]?.setting_value || {},
         capital
@@ -454,6 +456,86 @@ function registerContadorRoutes(app, pool, helpers) {
       await client.query('ROLLBACK').catch(() => {});
       next(error);
     } finally { client.release(); }
+  });
+
+  app.post('/api/contador/cobros/anular', financeAccess, async (req, res, next) => {
+    const kind = req.body?.kind === 'cobro' ? 'cobro' : req.body?.kind === 'consulta' ? 'consulta' : '';
+    const id = Number(req.body?.id);
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 300) : '';
+    if (!kind || !Number.isSafeInteger(id) || id < 1 || !reason) {
+      return res.status(400).json({ error: 'Selecciona un registro e indica el motivo de la anulación.' });
+    }
+    try {
+      if (!(await checkNip(req.body?.authorizationNip))) {
+        return res.status(403).json({ error: 'Clave del Contador incorrecta.' });
+      }
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query("SELECT pg_advisory_xact_lock(hashtext('consultorio_contador_cobros'))");
+        const now = new Date().toISOString();
+        const user = req.session?.displayName || req.session?.username || 'Contador';
+        if (kind === 'cobro') {
+          const found = await client.query("SELECT data FROM app_records WHERE store='cobros' AND record_key=$1 FOR UPDATE", [String(id)]);
+          if (!found.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'No se encontró el cobro.' });
+          }
+          const cobro = found.rows[0].data || {};
+          if (cobro.status === 'pagado') {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ error: 'No se puede anular un cobro que ya fue confirmado como pagado.' });
+          }
+          if (cobro.status === 'cancelado') {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ error: 'Este cobro ya fue anulado.' });
+          }
+          cobro.status = 'cancelado';
+          cobro.anuladoAt = now;
+          cobro.anuladoPor = user;
+          cobro.motivoAnulacion = reason;
+          cobro.audit = Array.isArray(cobro.audit) ? cobro.audit : [];
+          cobro.audit.push({ fecha: now, accion: 'anulado_por_contador', usuario: user, motivo: reason });
+          await client.query("UPDATE app_records SET data=$2, updated_at=NOW() WHERE store='cobros' AND record_key=$1", [String(id), cobro]);
+          if (cobro.consultaId != null) {
+            const consultaResult = await client.query("SELECT data FROM app_records WHERE store='consultas' AND record_key=$1 FOR UPDATE", [String(cobro.consultaId)]);
+            if (consultaResult.rowCount) {
+              const consulta = consultaResult.rows[0].data || {};
+              consulta.cobroRevisionAnuladaAt = now;
+              consulta.cobroRevisionAnuladaPor = user;
+              consulta.cobroRevisionMotivo = reason;
+              await client.query("UPDATE app_records SET data=$2, updated_at=NOW() WHERE store='consultas' AND record_key=$1", [String(cobro.consultaId), consulta]);
+            }
+          }
+        } else {
+          const found = await client.query("SELECT data FROM app_records WHERE store='consultas' AND record_key=$1 FOR UPDATE", [String(id)]);
+          if (!found.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'No se encontró la consulta.' });
+          }
+          const consulta = found.rows[0].data || {};
+          if (consulta.cobroId != null || consulta.cobroRevisionAnuladaAt) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ error: 'Esta consulta ya tiene un cobro asociado o ya fue marcada como no cobrada.' });
+          }
+          const existing = await client.query("SELECT data FROM app_records WHERE store='cobros' AND data->>'consultaId'=$1 AND COALESCE(data->>'status','') <> 'cancelado' LIMIT 1", [String(id)]);
+          if (existing.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ error: 'La consulta tiene un cobro asociado. Actualiza la lista e inténtalo desde el cobro pendiente.' });
+          }
+          consulta.cobroRevisionAnuladaAt = now;
+          consulta.cobroRevisionAnuladaPor = user;
+          consulta.cobroRevisionMotivo = reason;
+          consulta.cobroRevisionEstado = 'no_cobrado_confirmado';
+          await client.query("UPDATE app_records SET data=$2, updated_at=NOW() WHERE store='consultas' AND record_key=$1", [String(id), consulta]);
+        }
+        await client.query('COMMIT');
+        res.json({ ok: true, message: 'Registro anulado y conservado en el historial.' });
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw error;
+      } finally { client.release(); }
+    } catch (error) { next(error); }
   });
 
   app.post('/api/contador/records/:id/reverse', financeAccess, async (req, res, next) => {
