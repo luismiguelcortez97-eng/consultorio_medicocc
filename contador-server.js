@@ -458,6 +458,68 @@ function registerContadorRoutes(app, pool, helpers) {
     } finally { client.release(); }
   });
 
+  app.post('/api/contador/cobros/registrar-desde-consulta', financeAccess, async (req, res, next) => {
+    const consultaId = Number(req.body?.consultaId);
+    const amount = Number(req.body?.amount);
+    const method = typeof req.body?.method === 'string' ? req.body.method.trim() : '';
+    const allowedMethods = new Set(['Efectivo', 'Tarjeta', 'Transferencia']);
+    if (!Number.isSafeInteger(consultaId) || consultaId < 1 || !Number.isFinite(amount) || amount <= 0 || amount > 10000000 || !allowedMethods.has(method)) {
+      return res.status(400).json({ error: 'Verifica el importe y selecciona un método de pago válido.' });
+    }
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query("SELECT pg_advisory_xact_lock(hashtext('consultorio_contador_cobros'))");
+      const found = await client.query("SELECT data FROM app_records WHERE store='consultas' AND record_key=$1 FOR UPDATE", [String(consultaId)]);
+      if (!found.rowCount) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'No se encontró la consulta.' });
+      }
+      const consulta = found.rows[0].data || {};
+      if (consulta.cobroRevisionAnuladaAt || consulta.cobroId != null) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'La consulta ya tiene un cobro asociado o fue marcada como no cobrada. Actualiza la lista.' });
+      }
+      const existing = await client.query("SELECT data FROM app_records WHERE store='cobros' AND data->>'consultaId'=$1 LIMIT 1 FOR UPDATE", [String(consultaId)]);
+      if (existing.rowCount) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Ya existe un registro de cobro para esta consulta. Actualiza la lista y confirma desde Cobros pendientes.' });
+      }
+      const patientResult = await client.query("SELECT data FROM app_records WHERE store='pacientes' AND record_key=$1", [String(consulta.pacienteId)]);
+      const doctorResult = await client.query("SELECT data FROM app_records WHERE store='medicos' AND record_key=$1", [String(consulta.medicoId)]);
+      const paciente = patientResult.rows[0]?.data || {};
+      const medico = doctorResult.rows[0]?.data || {};
+      const sequence = await client.query(`INSERT INTO app_sequences(store, next_id) VALUES('cobros', 1)
+        ON CONFLICT(store) DO UPDATE SET next_id=app_sequences.next_id+1 RETURNING next_id`);
+      const id = Number(sequence.rows[0].next_id);
+      const now = new Date().toISOString();
+      const user = req.session?.displayName || req.session?.username || 'Contador';
+      const received = Math.round(amount * 100) / 100;
+      const cobro = {
+        id, concepto: 'Consulta médica',
+        referencia: (paciente.nombre || 'Paciente') + (medico.nombre ? ' | Dr(a). ' + medico.nombre : ''),
+        monto: received, montoSolicitado: Number(consulta.montoConsulta) || null,
+        montoRecibido: received, metodoPago: method, tipo: 'medico', status: 'pagado',
+        medicoId: consulta.medicoId || null, pacienteId: consulta.pacienteId || null, consultaId,
+        fecha: now, cobradoAt: now, pagadoAt: now, pagadoPor: user, creadoPor: user,
+        audit: [{ fecha: now, accion: 'cobro_registrado_y_confirmado_por_contador', usuario: user, consultaId, montoRecibido: received, metodoPago: method }]
+      };
+      consulta.montoConsulta = received;
+      consulta.cobroId = id;
+      consulta.cobroRegistradoAt = now;
+      consulta.cobroRegistradoPor = user;
+      consulta.cobroConfirmadoAt = now;
+      consulta.cobroConfirmadoPor = user;
+      await client.query("UPDATE app_records SET data=$2, updated_at=NOW() WHERE store='consultas' AND record_key=$1", [String(consultaId), consulta]);
+      await client.query("INSERT INTO app_records(store, record_key, data) VALUES('cobros',$1,$2)", [String(id), cobro]);
+      await client.query('COMMIT');
+      res.status(201).json({ ok: true, cobro });
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      next(error);
+    } finally { client.release(); }
+  });
+
   app.post('/api/contador/cobros/confirmar', financeAccess, async (req, res, next) => {
     const id = Number(req.body?.id);
     const amount = Number(req.body?.amount);
