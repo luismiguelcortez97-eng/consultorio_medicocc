@@ -294,7 +294,7 @@ function registerContadorRoutes(app, pool, helpers) {
       if (!original.rowCount || original.rows[0].reversed_at) return res.status(404).json({ error: 'Movimiento no disponible para reversión.' });
       const result = await pool.query(
         'INSERT INTO contador_records(record_type,data,created_by,reversed_by) VALUES($1,$2,$3,$4) RETURNING id,record_type AS type,data,created_at AS "createdAt"',
-        ['reversal', { originalId: id, originalType: original.rows[0].record_type, amount: Number(original.rows[0].data?.amount) || 0, reason }, req.session?.displayName || req.session?.username || 'Administrador', id]
+        ['reversal', { originalId: id, originalType: original.rows[0].record_type, amount: Number(original.rows[0].data?.amount) || 0, originalDirection: original.rows[0].data?.direction || null, originalAccount: original.rows[0].data?.account || null, reason }, req.session?.displayName || req.session?.username || 'Administrador', id]
       );
       await pool.query('UPDATE contador_records SET reversed_at=NOW() WHERE id=$1', [id]);
       res.status(201).json(result.rows[0]);
