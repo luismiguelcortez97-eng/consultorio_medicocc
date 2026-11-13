@@ -2507,10 +2507,46 @@ async function renderConfiguracion() {
           <div id="contador-nip-config-status" class="mt-2" role="status"></div>
         </form>
       </div>
+    </div>
+    <div class="card mt-3">
+      <div class="card-header"><h3>Parámetros financieros del Contador</h3></div>
+      <div class="card-body">
+        <form id="contador-settings-form">
+          <div class="form-row">
+            <div class="form-group"><label for="contador-rent-setting">Renta mensual</label><input id="contador-rent-setting" class="form-control" type="number" min="0" step="0.01" value="${Number(contadorSettings.rentMonthly)||0}"></div>
+            <div class="form-group"><label for="contador-opening-capital">Capital inicial</label><input id="contador-opening-capital" class="form-control" type="number" min="0" step="0.01" value="${Number(contadorSettings.capitalInicial)||0}"></div>
+            <div class="form-group"><label for="contador-daily-pay">Salario por jornada de 8 horas</label><input id="contador-daily-pay" class="form-control" type="number" min="0" step="0.01" value="${Number(contadorSettings.salarioBaseDiario)||440}"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label for="contador-accountant-percent">Porcentaje semanal del Contador</label><input id="contador-accountant-percent" class="form-control" type="number" min="0" max="100" step="0.01" value="${Number(contadorSettings.salaryAccountantPercent)||0}"></div>
+            <div class="form-group"><label for="contador-admin-percent">Porcentaje semanal del administrador</label><input id="contador-admin-percent" class="form-control" type="number" min="0" max="100" step="0.01" value="${Number(contadorSettings.salaryAdminPercent)||0}"></div>
+          </div>
+          <button class="btn btn-primary" type="submit">Guardar parámetros financieros</button>
+          <div id="contador-settings-status" class="mt-2" role="status"></div>
+        </form>
+        <p class="text-muted mt-2">La luz se captura cada mes porque su importe cambia. Los porcentajes de salario están configurables; falta confirmar si se calculan sobre ingresos totales o capital libre antes de activar su cálculo automático.</p>
+      </div>
     </div>` : ''}
   `;
   document.getElementById('config-tema-suave').addEventListener('change', function (event) {
     aplicarTemaSuave(event.target.checked);
+  });
+  document.getElementById('contador-settings-form')?.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    const status = document.getElementById('contador-settings-status');
+    try {
+      const response = await fetch('/api/contador/admin-config', { method:'PUT', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body:JSON.stringify({
+        rentMonthly:Number(document.getElementById('contador-rent-setting').value),
+        capitalInicial:Number(document.getElementById('contador-opening-capital').value),
+        salarioBaseDiario:Number(document.getElementById('contador-daily-pay').value),
+        salaryAccountantPercent:Number(document.getElementById('contador-accountant-percent').value),
+        salaryAdminPercent:Number(document.getElementById('contador-admin-percent').value),
+        capitalDistribution:contadorSettings.capitalDistribution||[]
+      })});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo guardar la configuración.');
+      status.className='alert alert-success mt-2'; status.textContent='Parámetros financieros guardados.';
+    } catch(error) { status.className='alert alert-danger mt-2'; status.textContent=error.message; }
   });
   document.getElementById('contador-nip-config-form')?.addEventListener('submit', async function (event) {
     event.preventDefault();
