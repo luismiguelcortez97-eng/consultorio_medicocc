@@ -3899,6 +3899,13 @@ function renderContadorPanel(data, view = 'inicio') {
     const consultation=consultById.get(String(c.consultaId||'')), patient=patientById.get(String(c.pacienteId||consultation?.pacienteId||''));
     return '<tr><td>'+contadorEscape(dateTime(c.fecha))+'</td><td>'+contadorEscape(patient?.nombre||patient?.name||c.referencia||'—')+'</td><td>'+contadorMoney(c.monto)+'</td><td><span class="badge badge-warning">Pendiente</span></td><td><button type="button" class="btn btn-outline btn-sm" data-cancel-kind="cobro" data-cancel-id="'+Number(c.id)+'">Anular cobro</button></td></tr>';
   }).join('');
+  const canceledCobroRows = allCobros.filter(c=>c.status==='cancelado').sort((x,y)=>String(y.anuladoAt||y.fecha||'').localeCompare(String(x.anuladoAt||x.fecha||''))).map(c=>{
+    const consultation=consultById.get(String(c.consultaId||'')), patient=patientById.get(String(c.pacienteId||consultation?.pacienteId||''));
+    return '<tr><td>'+contadorEscape(dateTime(c.anuladoAt||c.fecha))+'</td><td>'+contadorEscape(patient?.nombre||patient?.name||c.referencia||'—')+'</td><td>'+contadorMoney(c.monto)+'</td><td>'+contadorEscape(c.anuladoPor||'—')+'</td><td>'+contadorEscape(c.motivoAnulacion||'—')+'</td></tr>';
+  }).join('');
+  const canceledConsultRows = allConsultas.filter(c=>c.cobroRevisionEstado==='no_cobrado_confirmado').map(c=>
+    '<tr><td>'+contadorEscape(dateTime(c.cobroRevisionAnuladaAt))+'</td><td>'+contadorEscape(patientName(c.pacienteId))+'</td><td>'+contadorEscape(doctorName(c.medicoId))+'</td><td>'+contadorEscape(c.cobroRevisionAnuladaPor||'—')+'</td><td>'+contadorEscape(c.cobroRevisionMotivo||'—')+'</td></tr>'
+  ).join('');
   const viewHtml = view==='inicio' ? `
     <div class="stats-grid">
       <div class="stat-card"><div class="stat-icon green">💵</div><div class="stat-info"><h4>${contadorMoney(daily)}</h4><p>Ingreso diario</p></div></div>
@@ -3912,6 +3919,7 @@ function renderContadorPanel(data, view = 'inicio') {
     view==='control-cobros' ? `
     <div class="card"><div class="card-header"><h3>Consultas sin cobro registrado</h3><button class="btn btn-outline btn-sm" data-contador-refresh>Actualizar</button></div><div class="card-body"><p class="text-muted">Consultas que todavía no tienen un cobro asociado. Revisa si el paciente pagó antes de marcarlas como no cobradas.</p><div class="table-responsive"><table><thead><tr><th>Fecha y hora</th><th>Paciente</th><th>Médico</th><th>Motivo</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${missingRows||'<tr><td colspan="6">No hay consultas sin cobro registrado.</td></tr>'}</tbody></table></div></div></div>
     <div class="card mt-3"><div class="card-header"><h3>Cobros pendientes de confirmación</h3></div><div class="card-body"><div class="table-responsive"><table><thead><tr><th>Fecha y hora</th><th>Paciente</th><th>Importe</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${pendingRows||'<tr><td colspan="5">No hay cobros pendientes.</td></tr>'}</tbody></table></div></div></div>
+    <div class="card mt-3"><div class="card-header"><h3>Historial de anulaciones</h3></div><div class="card-body"><h4>Cobros pendientes anulados</h4><div class="table-responsive"><table><thead><tr><th>Fecha de anulación</th><th>Paciente</th><th>Importe</th><th>Autorizó</th><th>Motivo</th></tr></thead><tbody>${canceledCobroRows||'<tr><td colspan="5">Sin cobros anulados.</td></tr>'}</tbody></table></div><hr><h4>Consultas confirmadas como no cobradas</h4><div class="table-responsive"><table><thead><tr><th>Fecha de revisión</th><th>Paciente</th><th>Médico</th><th>Autorizó</th><th>Motivo</th></tr></thead><tbody>${canceledConsultRows||'<tr><td colspan="5">Sin consultas marcadas como no cobradas.</td></tr>'}</tbody></table></div></div></div>
     ` :
 
     view==='gastos' ? `
