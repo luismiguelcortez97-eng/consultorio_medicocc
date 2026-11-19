@@ -152,7 +152,7 @@ function registerMembershipRoutes(app,pool,auth){
   app.get('/api/admin/memberships/:accountId/history',requireAuth,requireAdmin,async(req,res,next)=>{try{const id=String(req.params.accountId||'');const p=await pool.query('SELECT id,provider,provider_payment_id AS "providerPaymentId",amount,currency,interval_months AS "intervalMonths",status,method,paid_at AS "paidAt",created_by AS "createdBy",created_at AS "createdAt" FROM membership_payments WHERE account_id=$1 ORDER BY created_at DESC',[id]);const a=await pool.query('SELECT actor,action,details,created_at AS "createdAt" FROM membership_audit WHERE account_id=$1 ORDER BY created_at DESC LIMIT 100',[id]);res.json({payments:p.rows,audit:a.rows});}catch(e){next(e);}});
 
   // Módulo administrativo independiente: membresías CC, sin alterar los planes públicos existentes.
-  const isoDay = v => /^\\d{4}-\\d{2}-\\d{2}$/.test(String(v||'')) && !Number.isNaN(Date.parse(v+'T00:00:00Z'));
+  const isoDay = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v||'')) && !Number.isNaN(Date.parse(v+'T00:00:00Z'));
   const addMonthsDay = (date, months, day) => { const d=new Date(String(date).slice(0,10)+'T00:00:00Z'); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth()+months); const last=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0)).getUTCDate(); d.setUTCDate(Math.min(Number(day),last)); return d.toISOString().slice(0,10); };
   const dueWindow = (base, months, startDay, endDay) => {
     const start=addMonthsDay(base,months,startDay);
