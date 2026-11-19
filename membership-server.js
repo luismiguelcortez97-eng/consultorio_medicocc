@@ -198,7 +198,7 @@ function registerMembershipRoutes(app,pool,auth){
   });
   app.put('/api/admin/cc-memberships/:id',requireAuth,requireAdmin,async(req,res,next)=>{
     const b=req.body||{},id=String(req.params.id||''),name=cleanName(b.fullName),birth=String(b.birthDate||''),phone=String(b.phone||''),amount=Number(b.amount),months=Number(b.intervalMonths),sd=Number(b.payStartDay),ed=Number(b.payEndDay),type=String(b.memberType||'');
-    if(!/^[0-9a-f-]{36}$/i.test(id)||name.length<2||!validBirth(birth)||!validPhone(phone)||!Number.isFinite(amount)||amount<=0||amount>100000||!Number.isInteger(months)||months<1||months>24||![1,2,3].includes(0)||!['adulto','adulto_mayor','pediatrico'].includes(type)||![sd,ed].every(n=>Number.isInteger(n)&&n>=1&&n<=31))return res.status(400).json({error:'Revisa los datos de la membresía.'});
+    if(!/^[0-9a-f-]{36}$/i.test(id)||name.length<2||!validBirth(birth)||!validPhone(phone)||!Number.isFinite(amount)||amount<=0||amount>100000||!Number.isInteger(months)||months<1||months>24||!['adulto','adulto_mayor','pediatrico'].includes(type)||![sd,ed].every(n=>Number.isInteger(n)&&n>=1&&n<=31))return res.status(400).json({error:'Revisa los datos de la membresía.'});
     const guardianName=cleanName(b.guardianName||''),guardianPhone=String(b.guardianPhone||'').trim();
     if(type!=='adulto'&&(!guardianName||!validPhone(guardianPhone)))return res.status(400).json({error:'Registra responsable y teléfono válido.'});
     try{
