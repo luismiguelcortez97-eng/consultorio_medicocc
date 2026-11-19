@@ -28,6 +28,15 @@ async function initMembershipDb(pool) {
   await pool.query('CREATE TABLE IF NOT EXISTS membership_notification_log (id BIGSERIAL PRIMARY KEY, account_id UUID NOT NULL REFERENCES membership_accounts(id), event_key TEXT NOT NULL, recipient TEXT NOT NULL, sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(account_id,event_key,recipient))');
   await pool.query('CREATE TABLE IF NOT EXISTS membership_folio_sequence (id INTEGER PRIMARY KEY CHECK(id=1), next_value BIGINT NOT NULL)');
   await pool.query('INSERT INTO membership_folio_sequence(id,next_value) VALUES(1,1) ON CONFLICT(id) DO NOTHING');
+  await pool.query("CREATE TABLE IF NOT EXISTS cc_membership_sequence(id INTEGER PRIMARY KEY CHECK(id=1), next_value BIGINT NOT NULL)");
+  await pool.query("INSERT INTO cc_membership_sequence(id,next_value) VALUES(1,1) ON CONFLICT(id) DO NOTHING");
+  await pool.query("CREATE TABLE IF NOT EXISTS cc_memberships(id UUID PRIMARY KEY, folio TEXT NOT NULL UNIQUE, full_name TEXT NOT NULL, birth_date DATE NOT NULL, phone TEXT NOT NULL, member_type TEXT NOT NULL CHECK(member_type IN ('adulto','adulto_mayor','pediatrico')), guardian_name TEXT, guardian_relation TEXT, guardian_phone TEXT, amount NUMERIC(12,2) NOT NULL, interval_months INTEGER NOT NULL CHECK(interval_months BETWEEN 1 AND 24), pay_start_day INTEGER NOT NULL CHECK(pay_start_day BETWEEN 1 AND 31), pay_end_day INTEGER NOT NULL CHECK(pay_end_day BETWEEN 1 AND 31), status TEXT NOT NULL DEFAULT 'pendiente', next_due_start DATE, next_due_end DATE, expires_at DATE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), created_by TEXT)");
+  await pool.query("CREATE INDEX IF NOT EXISTS cc_memberships_name_idx ON cc_memberships(LOWER(full_name))");
+  await pool.query("CREATE INDEX IF NOT EXISTS cc_memberships_due_idx ON cc_memberships(next_due_end,status)");
+  await pool.query("CREATE TABLE IF NOT EXISTS cc_membership_payments(id UUID PRIMARY KEY, membership_id UUID NOT NULL REFERENCES cc_memberships(id), amount NUMERIC(12,2) NOT NULL, months_paid INTEGER NOT NULL, method TEXT NOT NULL, paid_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), next_due_start DATE, next_due_end DATE, created_by TEXT, note TEXT)");
+  await pool.query("CREATE INDEX IF NOT EXISTS cc_membership_payments_member_idx ON cc_membership_payments(membership_id,paid_at DESC)");
+  await pool.query("CREATE TABLE IF NOT EXISTS cc_membership_audit(id BIGSERIAL PRIMARY KEY, membership_id UUID NOT NULL REFERENCES cc_memberships(id), actor TEXT NOT NULL, action TEXT NOT NULL, details JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
+
   await pool.query('INSERT INTO membership_settings(key,value) VALUES(\'default\',$1::jsonb) ON CONFLICT(key) DO NOTHING',[JSON.stringify(DEFAULTS)]);
 }
 async function settings(pool) {
@@ -141,6 +150,99 @@ function registerMembershipRoutes(app,pool,auth){
     }catch(e){await client.query('ROLLBACK').catch(()=>{});next(e);}finally{client.release();}
   });
   app.get('/api/admin/memberships/:accountId/history',requireAuth,requireAdmin,async(req,res,next)=>{try{const id=String(req.params.accountId||'');const p=await pool.query('SELECT id,provider,provider_payment_id AS "providerPaymentId",amount,currency,interval_months AS "intervalMonths",status,method,paid_at AS "paidAt",created_by AS "createdBy",created_at AS "createdAt" FROM membership_payments WHERE account_id=$1 ORDER BY created_at DESC',[id]);const a=await pool.query('SELECT actor,action,details,created_at AS "createdAt" FROM membership_audit WHERE account_id=$1 ORDER BY created_at DESC LIMIT 100',[id]);res.json({payments:p.rows,audit:a.rows});}catch(e){next(e);}});
+
+  // Módulo administrativo independiente: membresías CC, sin alterar los planes públicos existentes.
+  const isoDay = v => /^\\d{4}-\\d{2}-\\d{2}$/.test(String(v||'')) && !Number.isNaN(Date.parse(v+'T00:00:00Z'));
+  const addMonthsDay = (date, months, day) => { const d=new Date(String(date).slice(0,10)+'T00:00:00Z'); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth()+months); const last=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0)).getUTCDate(); d.setUTCDate(Math.min(Number(day),last)); return d.toISOString().slice(0,10); };
+  const dueWindow = (base, months, startDay, endDay) => {
+    const start=addMonthsDay(base,months,startDay);
+    let end=addMonthsDay(base,months,endDay);
+    if(end<start) end=addMonthsDay(start,1,endDay);
+    return {start,end};
+  };
+  const membershipState = m => {
+    if(m.status==='no_pago') return 'Vencida';
+    if(!m.expires_at) return 'Pendiente de pago';
+    const today=new Date().toISOString().slice(0,10);
+    if(String(m.expires_at).slice(0,10)<today) return 'Vencida';
+    if(String(m.next_due_end).slice(0,10)===today) return 'Pago hoy';
+    return 'Activa';
+  };
+  app.get('/api/admin/cc-memberships',requireAuth,requireAdmin,async(req,res,next)=>{
+    try{
+      const q=String(req.query.search||'').trim().slice(0,120);
+      const args=[];let where='';
+      if(q){args.push('%'+q.replace(/[\\%_]/g,'\\  return async function runMembershipNotifications(){')+'%');where='WHERE full_name ILIKE $1 OR folio ILIKE $1 OR phone ILIKE $1';}
+      const r=await pool.query('SELECT * FROM cc_memberships '+where+' ORDER BY created_at DESC',args);
+      res.set('Cache-Control','no-store');
+      res.json(r.rows.map(m=>({...m,statusLabel:membershipState(m),age:ageFromBirth(m.birth_date),amount:Number(m.amount)})));
+    }catch(e){next(e);}
+  });
+  function ageFromBirth(v){const b=new Date(String(v).slice(0,10)+'T00:00:00Z'),n=new Date();let a=n.getUTCFullYear()-b.getUTCFullYear();if(n.getUTCMonth()<b.getUTCMonth()||(n.getUTCMonth()===b.getUTCMonth()&&n.getUTCDate()<b.getUTCDate()))a--;return a;}
+  app.post('/api/admin/cc-memberships',requireAuth,requireAdmin,async(req,res,next)=>{
+    const b=req.body||{},name=cleanName(b.fullName),birth=String(b.birthDate||''),phone=String(b.phone||'').trim(),type=String(b.memberType||''),amount=Number(b.amount),months=Number(b.intervalMonths),sd=Number(b.payStartDay),ed=Number(b.payEndDay);
+    if(name.length<2||name.length>120||!validBirth(birth)||!validPhone(phone)||!['adulto','adulto_mayor','pediatrico'].includes(type)||!Number.isFinite(amount)||amount<=0||amount>100000||!Number.isInteger(months)||months<1||months>24||!Number.isInteger(sd)||sd<1||sd>31||!Number.isInteger(ed)||ed<1||ed>31)return res.status(400).json({error:'Revisa nombre, nacimiento, teléfono, tipo, tarifa, meses y días de pago.'});
+    const guardianName=cleanName(b.guardianName||''),guardianRelation=String(b.guardianRelation||'').trim().slice(0,60),guardianPhone=String(b.guardianPhone||'').trim();
+    if((type!=='adulto')&&(!guardianName||guardianName.length<2||!validPhone(guardianPhone)))return res.status(400).json({error:'Para pediátrico o adulto mayor registra responsable y teléfono válido.'});
+    const client=await pool.connect();let out;
+    try{
+      await client.query('BEGIN');
+      const seq=await client.query('UPDATE cc_membership_sequence SET next_value=next_value+1 WHERE id=1 RETURNING next_value-1 AS n');
+      const folio=String(seq.rows[0].n).padStart(3,'0');
+      const id=crypto.randomUUID();
+      out=await client.query("INSERT INTO cc_memberships(id,folio,full_name,birth_date,phone,member_type,guardian_name,guardian_relation,guardian_phone,amount,interval_months,pay_start_day,pay_end_day,status,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pendiente',$14) RETURNING *",[id,folio,name,birth,phone,type,guardianName||null,guardianRelation||null,guardianPhone||null,amount,months,sd,ed,req.session?.displayName||req.session?.username||'Administrador']);
+      await client.query('INSERT INTO cc_membership_audit(membership_id,actor,action,details) VALUES($1,$2,$3,$4)',[id,req.session?.username||'admin','registro_creado',{folio,memberType:type,amount,intervalMonths:months}]);
+      await client.query('COMMIT');
+    }catch(e){await client.query('ROLLBACK').catch(()=>{});return next(e);}finally{client.release();}
+    res.status(201).json({...out.rows[0],age:ageFromBirth(out.rows[0].birth_date),statusLabel:'Pendiente de pago'});
+  });
+  app.put('/api/admin/cc-memberships/:id',requireAuth,requireAdmin,async(req,res,next)=>{
+    const b=req.body||{},id=String(req.params.id||''),name=cleanName(b.fullName),birth=String(b.birthDate||''),phone=String(b.phone||''),amount=Number(b.amount),months=Number(b.intervalMonths),sd=Number(b.payStartDay),ed=Number(b.payEndDay),type=String(b.memberType||'');
+    if(!/^[0-9a-f-]{36}$/i.test(id)||name.length<2||!validBirth(birth)||!validPhone(phone)||!Number.isFinite(amount)||amount<=0||amount>100000||!Number.isInteger(months)||months<1||months>24||![1,2,3].includes(0)||!['adulto','adulto_mayor','pediatrico'].includes(type)||![sd,ed].every(n=>Number.isInteger(n)&&n>=1&&n<=31))return res.status(400).json({error:'Revisa los datos de la membresía.'});
+    const guardianName=cleanName(b.guardianName||''),guardianPhone=String(b.guardianPhone||'').trim();
+    if(type!=='adulto'&&(!guardianName||!validPhone(guardianPhone)))return res.status(400).json({error:'Registra responsable y teléfono válido.'});
+    try{
+      const r=await pool.query("UPDATE cc_memberships SET full_name=$2,birth_date=$3,phone=$4,member_type=$5,guardian_name=$6,guardian_relation=$7,guardian_phone=$8,amount=$9,interval_months=$10,pay_start_day=$11,pay_end_day=$12,updated_at=NOW() WHERE id=$1 RETURNING *",[id,name,birth,phone,type,guardianName||null,String(b.guardianRelation||'').slice(0,60)||null,guardianPhone||null,amount,months,sd,ed]);
+      if(!r.rowCount)return res.status(404).json({error:'Membresía no encontrada.'});
+      await auditCC(pool,id,req.session?.username,'datos_actualizados',{fullName:name,amount,intervalMonths:months});
+      res.json({...r.rows[0],age:ageFromBirth(r.rows[0].birth_date),statusLabel:membershipState(r.rows[0])});
+    }catch(e){next(e);}
+  });
+  async function auditCC(db,id,actor,action,details){await db.query('INSERT INTO cc_membership_audit(membership_id,actor,action,details) VALUES($1,$2,$3,$4)',[id,String(actor||'Administrador'),action,details||{}]);}
+  app.post('/api/admin/cc-memberships/:id/payments',requireAuth,requireAdmin,async(req,res,next)=>{
+    const id=String(req.params.id||''),b=req.body||{},method=String(b.method||''),months=Number(b.monthsPaid);
+    if(!/^[0-9a-f-]{36}$/i.test(id)||!['Efectivo','Transferencia','Tarjeta','Otro'].includes(method)||!Number.isInteger(months)||months<1||months>24)return res.status(400).json({error:'Selecciona método y periodo válidos.'});
+    const client=await pool.connect();let result;
+    try{
+      await client.query('BEGIN');
+      const q=await client.query('SELECT * FROM cc_memberships WHERE id=$1 FOR UPDATE',[id]);
+      if(!q.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'Membresía no encontrada.'});}
+      const m=q.rows[0],today=new Date().toISOString().slice(0,10);
+      const base=m.next_due_start&&m.next_due_end&&String(m.next_due_end).slice(0,10)>=today?String(m.next_due_start).slice(0,10):today;
+      const win=dueWindow(base,months,m.pay_start_day,m.pay_end_day);
+      const amount=Number(b.amount||m.amount);
+      if(!Number.isFinite(amount)||amount<=0||amount>100000){await client.query('ROLLBACK');return res.status(400).json({error:'Importe de pago inválido.'});}
+      const pid=crypto.randomUUID();
+      await client.query('INSERT INTO cc_membership_payments(id,membership_id,amount,months_paid,method,next_due_start,next_due_end,created_by,note) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[pid,id,amount,months,method,win.start,win.end,req.session?.displayName||req.session?.username||'Administrador',String(b.note||'').slice(0,300)]);
+      result=await client.query("UPDATE cc_memberships SET amount=$2,interval_months=$3,status='activa',next_due_start=$4,next_due_end=$5,expires_at=$5,updated_at=NOW() WHERE id=$1 RETURNING *",[id,amount,months,win.start,win.end]);
+      await auditCC(client,id,req.session?.username,'pago_confirmado',{paymentId:pid,amount,method,monthsPaid:months,nextDueStart:win.start,nextDueEnd:win.end});
+      await client.query('COMMIT');
+    }catch(e){await client.query('ROLLBACK').catch(()=>{});return next(e);}finally{client.release();}
+    res.status(201).json({...result.rows[0],statusLabel:membershipState(result.rows[0])});
+  });
+  app.patch('/api/admin/cc-memberships/:id/no-payment',requireAuth,requireAdmin,async(req,res,next)=>{
+    const id=String(req.params.id||'');
+    try{const r=await pool.query("UPDATE cc_memberships SET status='no_pago',updated_at=NOW() WHERE id=$1 RETURNING *",[id]);if(!r.rowCount)return res.status(404).json({error:'Membresía no encontrada.'});await auditCC(pool,id,req.session?.username,'no_realizo_pago',{});res.json({ok:true,statusLabel:'Vencida'});}catch(e){next(e);}
+  });
+  app.patch('/api/admin/cc-memberships/:id/due-date',requireAuth,requireAdmin,async(req,res,next)=>{
+    const id=String(req.params.id||''),start=String(req.body?.nextDueStart||''),end=String(req.body?.nextDueEnd||'');
+    if(!isoDay(start)||!isoDay(end)||end<start)return res.status(400).json({error:'Selecciona un intervalo de fechas válido.'});
+    try{const r=await pool.query('UPDATE cc_memberships SET next_due_start=$2,next_due_end=$3,expires_at=$3,status=\'activa\',updated_at=NOW() WHERE id=$1 RETURNING *',[id,start,end]);if(!r.rowCount)return res.status(404).json({error:'Membresía no encontrada.'});await auditCC(pool,id,req.session?.username,'fecha_limite_modificada',{start,end});res.json({...r.rows[0],statusLabel:membershipState(r.rows[0])});}catch(e){next(e);}
+  });
+  app.get('/api/admin/cc-memberships/:id/payments',requireAuth,requireAdmin,async(req,res,next)=>{
+    try{const p=await pool.query('SELECT * FROM cc_membership_payments WHERE membership_id=$1 ORDER BY paid_at DESC',[req.params.id]);const a=await pool.query('SELECT * FROM cc_membership_audit WHERE membership_id=$1 ORDER BY created_at DESC LIMIT 100',[req.params.id]);res.json({payments:p.rows,audit:a.rows});}catch(e){next(e);}
+  });
+
   return async function runMembershipNotifications(){
     try{const r=await pool.query('SELECT id,status,start_at,expires_at,canceled_at FROM membership_accounts WHERE canceled_at IS NULL AND start_at IS NOT NULL AND expires_at IS NOT NULL AND expires_at>NOW()-INTERVAL \'1 day\'');
       for(const a of r.rows){const st=state(a),to=await recipients(pool,a.id);if(st==='Activa'&&a.status!=='active'){await pool.query('UPDATE membership_accounts SET status=\'active\',updated_at=NOW() WHERE id=$1',[a.id]);await sendEmail(pool,to,'Tu membresía está activa - Consultorio Médico CC','Tu membresía ya está activa hasta el '+new Date(a.expires_at).toLocaleDateString('es-MX')+'. Horario: lunes a viernes de 9:00 a. m. a 7:00 p. m.; sábados de 9:00 a. m. a 3:00 p. m. Atención médica general, no urgencias calificadas. Los procedimientos médicos no están incluidos.',a.id,'activacion:'+new Date(a.start_at).toISOString());}
