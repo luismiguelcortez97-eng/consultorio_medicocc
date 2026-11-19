@@ -212,7 +212,7 @@ function registerMembershipRoutes(app,pool,auth){
   app.post('/api/admin/cc-memberships/:id/payments',requireAuth,requireAdmin,async(req,res,next)=>{
     const id=String(req.params.id||''),b=req.body||{},method=String(b.method||''),months=Number(b.monthsPaid);
     if(!/^[0-9a-f-]{36}$/i.test(id)||!['Efectivo','Transferencia','Tarjeta','Otro'].includes(method)||!Number.isInteger(months)||months<1||months>24)return res.status(400).json({error:'Selecciona método y periodo válidos.'});
-    const client=await pool.connect();let result;
+    const client=await pool.connect();let result,payment;
     try{
       await client.query('BEGIN');
       const q=await client.query('SELECT * FROM cc_memberships WHERE id=$1 FOR UPDATE',[id]);
@@ -223,12 +223,12 @@ function registerMembershipRoutes(app,pool,auth){
       const amount=Number(b.amount||m.amount);
       if(!Number.isFinite(amount)||amount<=0||amount>100000){await client.query('ROLLBACK');return res.status(400).json({error:'Importe de pago inválido.'});}
       const pid=crypto.randomUUID();
-      await client.query('INSERT INTO cc_membership_payments(id,membership_id,amount,months_paid,method,next_due_start,next_due_end,created_by,note) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[pid,id,amount,months,method,win.start,win.end,req.session?.displayName||req.session?.username||'Administrador',String(b.note||'').slice(0,300)]);
+      const savedPayment=await client.query('INSERT INTO cc_membership_payments(id,membership_id,amount,months_paid,method,next_due_start,next_due_end,created_by,note) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING paid_at',[pid,id,amount,months,method,win.start,win.end,req.session?.displayName||req.session?.username||'Administrador',String(b.note||'').slice(0,300)]);payment={paymentId:pid,paidAt:savedPayment.rows[0].paid_at,amount,monthsPaid:months,method,note:String(b.note||'').slice(0,300),startsAt:win.start,expiresAt:win.end};
       result=await client.query("UPDATE cc_memberships SET amount=$2,interval_months=$3,status='activa',next_due_start=$4,next_due_end=$5,expires_at=$5,updated_at=NOW() WHERE id=$1 RETURNING *",[id,amount,months,win.start,win.end]);
       await auditCC(client,id,req.session?.username,'pago_confirmado',{paymentId:pid,amount,method,monthsPaid:months,nextDueStart:win.start,nextDueEnd:win.end});
       await client.query('COMMIT');
     }catch(e){await client.query('ROLLBACK').catch(()=>{});return next(e);}finally{client.release();}
-    res.status(201).json({...result.rows[0],statusLabel:membershipState(result.rows[0])});
+    res.status(201).json({...result.rows[0],...payment,statusLabel:membershipState(result.rows[0])});
   });
   app.patch('/api/admin/cc-memberships/:id/no-payment',requireAuth,requireAdmin,async(req,res,next)=>{
     const id=String(req.params.id||'');
