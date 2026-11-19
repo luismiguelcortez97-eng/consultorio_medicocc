@@ -172,7 +172,7 @@ function registerMembershipRoutes(app,pool,auth){
     try{
       const q=String(req.query.search||'').trim().slice(0,120);
       const args=[];let where='';
-      if(q){args.push('%'+q.replace(/[\\%_]/g,ch=>'\\\\'+ch)+'%');where='WHERE full_name ILIKE $1 OR folio ILIKE $1 OR phone ILIKE $1';}
+      if(q){args.push('%'+q.replace(/[\\%_]/g,ch=>'\\'+ch)+'%');where='WHERE full_name ILIKE $1 OR folio ILIKE $1 OR phone ILIKE $1';}
       const r=await pool.query('SELECT * FROM cc_memberships '+where+' ORDER BY created_at DESC',args);
       res.set('Cache-Control','no-store');
       res.json(r.rows.map(m=>({...m,statusLabel:membershipState(m),age:ageFromBirth(m.birth_date),amount:Number(m.amount)})));
