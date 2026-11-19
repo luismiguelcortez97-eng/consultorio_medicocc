@@ -223,6 +223,7 @@ async function navigateTo(module) {
     consultas: 'Consultas Médicas',
     agenda: 'Agenda mensual de consultas',
     citasweb: 'Configuración de citas web',
+    membresias: 'Membresías',
     chat: 'Chat interno del personal',
     recetas: 'Receta independiente',
     personal: 'Accesos del personal',
@@ -250,6 +251,7 @@ async function navigateTo(module) {
       case 'consultas': await renderConsultas(); break;
       case 'agenda': await renderAgenda(); break;
       case 'citasweb': await renderCitasWeb(); break;
+      case 'membresias': renderMembresias(); break;
       case 'chat': await renderChat(); break;
       case 'recetas': await renderRecetas(); break;
       case 'personal': await renderPersonal(); break;
@@ -269,6 +271,12 @@ async function navigateTo(module) {
   }
 }
 
+
+
+function renderMembresias() {
+  const area = document.getElementById('content-area');
+  area.innerHTML = '<div class="membership-module-frame"><iframe title="Administración de membresías" src="membresias-admin.html" loading="eager"></iframe></div>';
+}
 
 
 async function renderCitasWeb() {
