@@ -1061,6 +1061,11 @@ function openConsultaModal(id = null) {
         </div>
       </div>
 
+      <section id="c-paciente-historial" class="card" style="display:none;margin:1rem 0;border:1px solid var(--border-color,#d7dee8);">
+        <div class="card-header"><h4 style="margin:0">Expediente e historial clínico</h4><span id="c-historial-resumen" class="text-muted"></span></div>
+        <div class="card-body" id="c-historial-contenido"><p class="text-muted">Selecciona un paciente para consultar su expediente.</p></div>
+      </section>
+
       <div class="form-group">
         <label>Motivo de consulta *</label>
         <textarea class="form-control" id="c-motivo" rows="2"></textarea>
@@ -1196,6 +1201,7 @@ function openConsultaModal(id = null) {
       const paciente = pacientes.find(p => String(p.id) === String(consultaExistente.pacienteId));
       document.getElementById('c-paciente-search').value = paciente ? paciente.nombre : '';
       document.getElementById('c-pacienteId').value = String(consultaExistente.pacienteId || '');
+      if (paciente) cargarHistorialPacienteEnConsulta(paciente.id);
       const fecha = new Date(consultaExistente.fecha || Date.now());
       document.getElementById('c-fecha-consulta').value = Number.isNaN(fecha.getTime()) ? '' : new Date(fecha.getTime() - fecha.getTimezoneOffset()*60000).toISOString().slice(0,16);
       document.getElementById('c-medicoId').value = String(consultaExistente.medicoId || '');
@@ -1223,7 +1229,13 @@ function openConsultaModal(id = null) {
       const nombre = pacienteSearch.value.trim().toLocaleLowerCase('es-MX');
       const coincidencia = pacientes.find(p => (p.nombre || '').trim().toLocaleLowerCase('es-MX') === nombre);
       pacienteIdSelect.value = coincidencia ? String(coincidencia.id) : '';
-      if (coincidencia) cargarSignosVitalesEnfermeria(coincidencia.id);
+      if (coincidencia) {
+        cargarSignosVitalesEnfermeria(coincidencia.id);
+        cargarHistorialPacienteEnConsulta(coincidencia.id);
+      } else {
+        const panel = document.getElementById('c-paciente-historial');
+        if (panel) panel.style.display = 'none';
+      }
     });
     pacienteSearch.addEventListener('change', () => {
       if (!pacienteIdSelect.value) {
@@ -1552,6 +1564,84 @@ async function cargarSignosVitalesEnfermeria(pacienteId) {
   } catch (error) {
     console.error('No se pudieron cargar los signos vitales:', error);
     if (aviso) aviso.textContent = 'No se pudieron cargar los signos vitales de enfermería. Puede capturarlos manualmente.';
+  }
+}
+
+async function cargarHistorialPacienteEnConsulta(pacienteId) {
+  const panel = document.getElementById('c-paciente-historial');
+  const contenido = document.getElementById('c-historial-contenido');
+  const resumen = document.getElementById('c-historial-resumen');
+  if (!panel || !contenido) return;
+
+  panel.style.display = 'block';
+  contenido.innerHTML = '<p class="text-muted">Cargando expediente e historial…</p>';
+  try {
+    const [paciente, consultas, medicos, catalogoMedicamentos] = await Promise.all([
+      DB.get(DB.STORES.pacientes, Number(pacienteId)),
+      DB.getAll(DB.STORES.consultas),
+      DB.getAll(DB.STORES.medicos),
+      DB.getAll(DB.STORES.medicamentos)
+    ]);
+    if (!paciente) throw new Error('No se encontró el expediente del paciente.');
+
+    const historial = consultas
+      .filter(c => !c.eliminada && String(c.pacienteId) === String(pacienteId) &&
+        (!APP.editingId || String(c.id) !== String(APP.editingId)))
+      .sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')));
+    const ultima = historial[0];
+    const fechaNacimiento = obtenerFechaNacimientoPaciente(paciente);
+    const edad = calcularEdad(fechaNacimiento);
+    const medicoPorId = id => medicos.find(m => String(m.id) === String(id));
+
+    const listaMedicamentos = consulta => (consulta.medicamentos || []).map(med => {
+      const catalogo = catalogoMedicamentos.find(x => String(x.id) === String(med.medicamentoId));
+      const nombre = catalogo ? catalogo.nombre : (med.nombre || 'Medicamento no identificado');
+      const detalles = [med.dosis, med.via, med.frecuencia, med.duracion].filter(Boolean).join(' · ');
+      return '<li><strong>' + escapeHtml(nombre) + '</strong>' +
+        (detalles ? ' — ' + escapeHtml(detalles) : '') + '</li>';
+    }).join('') || '<li class="text-muted">Sin medicamentos registrados</li>';
+
+    const seccion = (titulo, html) =>
+      '<div style="margin-top:1rem"><h5 style="margin-bottom:.45rem">' + titulo + '</h5>' + html + '</div>';
+
+    const antecedentesPrevios = historial
+      .filter(c => c.interrogatorio && c.interrogatorio.trim())
+      .map(c => '<li><strong>' + escapeHtml(formatDate(c.fecha)) + ':</strong> ' +
+        escapeHtml(c.interrogatorio).replace(/\n/g, '<br>') + '</li>').join('') ||
+      '<li class="text-muted">No hay antecedentes/interrogatorios capturados en consultas previas.</li>';
+
+    const consultasHtml = historial.length ? historial.map(c => {
+      const medico = medicoPorId(c.medicoId);
+      return '<article style="padding:.8rem 0;border-top:1px solid var(--border-color,#e3e7ed)">' +
+        '<div style="display:flex;justify-content:space-between;gap:.75rem;flex-wrap:wrap">' +
+        '<strong>' + escapeHtml(formatDate(c.fecha)) + '</strong>' +
+        '<span class="text-muted">' + escapeHtml(medico ? medico.nombre : 'Médico no registrado') + '</span></div>' +
+        '<p style="margin:.35rem 0"><strong>Motivo:</strong> ' + escapeHtml(c.motivo || 'No capturado') + '</p>' +
+        (c.cuadroClinico ? '<p style="margin:.25rem 0"><strong>Cuadro clínico:</strong> ' + escapeHtml(c.cuadroClinico) + '</p>' : '') +
+        (c.exploracion ? '<p style="margin:.25rem 0"><strong>Exploración:</strong> ' + escapeHtml(c.exploracion) + '</p>' : '') +
+        '<p style="margin:.25rem 0"><strong>Tratamiento / plan:</strong> ' + escapeHtml(c.tratamiento || 'No registrado') + '</p>' +
+        '<details style="margin-top:.4rem"><summary style="cursor:pointer">Medicamentos y notas de esta consulta</summary>' +
+        '<ul>' + listaMedicamentos(c) + '</ul>' +
+        (c.notasAdicionales ? '<p><strong>Notas:</strong> ' + escapeHtml(c.notasAdicionales).replace(/\n/g, '<br>') + '</p>' : '') +
+        '</details></article>';
+    }).join('') : '<p class="text-muted">Este paciente aún no tiene consultas previas registradas.</p>';
+
+    resumen.textContent = historial.length + ' consulta(s) previa(s)';
+    contenido.innerHTML =
+      '<div class="form-row">' +
+      '<div><small class="text-muted">Paciente</small><p><strong>' + escapeHtml(paciente.nombre || '—') + '</strong></p></div>' +
+      '<div><small class="text-muted">Edad / nacimiento</small><p>' + (edad == null ? '—' : edad + ' años') +
+      ' · ' + escapeHtml(fechaNacimiento || 'Sin fecha') + '</p></div>' +
+      '<div><small class="text-muted">Última atención</small><p><strong>' +
+      (ultima ? escapeHtml(formatDate(ultima.fecha)) : 'Sin consultas previas') + '</strong></p></div>' +
+      '</div>' +
+      '<p><strong>Teléfono:</strong> ' + escapeHtml(paciente.telefono || '—') +
+      ' · <strong>Género:</strong> ' + escapeHtml(paciente.genero || '—') +
+      ' · <strong>Médico asignado:</strong> ' + escapeHtml(medicoPorId(paciente.medicoId)?.nombre || '—') + '</p>' +
+      seccion('Antecedentes e interrogatorios registrados', '<ul style="padding-left:1.25rem">' + antecedentesPrevios + '</ul>') +
+      seccion('Historial cronológico de consultas', consultasHtml);
+  } catch (error) {
+    contenido.innerHTML = '<p class="alert alert-danger">No se pudo cargar el historial: ' + escapeHtml(error.message) + '</p>';
   }
 }
 
